@@ -1,3 +1,6 @@
+{!author name="Gonzalo Luzardo"}
+{!doc category="Image Processing/Filters"}
+
 % example: edge-preserving smoothing
 import "fastguidedfilter.q"
 import"Quasar.UI.dll"

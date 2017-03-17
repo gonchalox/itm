@@ -1,3 +1,6 @@
+{!author name="Gonzalo Luzardo"}
+{!doc category="Image Processing/Filters"}
+
 % example: guided feathering
 import "fastguidedfilter.q"
 import "Quasar.UI.dll"

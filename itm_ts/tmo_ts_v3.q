@@ -233,7 +233,7 @@ function [] = main()
 %    video_file_sdr="F:/movie_trailers/beauty-and-the-beast-trailer-2_h1080p.mov"
     
 %    video_file_sdr="F:/movie_trailers/The Angry Birds Movie (2016) DVDRip LAT-ZeiZ.mkv"
-    video_file_sdr="F:/movie_trailers/Moirai_ls.mp4"
+    video_file_sdr="F:/movie_trailers/spiderman-homecoming-trailer-1_h1080p.mov"
 
 
 %    jef = imread("C:\Users\ipi\Desktop\ishihara_10.jpg")/255
@@ -494,8 +494,9 @@ function [] = main()
         frame_dequant = frame_graded
         if(cb_pocs.value)
             for i = 1..8
-                parallel_do(size(frame_expanded),frame_v_buff,frame_dequant,pocs_params.r_pocs,pocs_horizontal_run)
-                parallel_do(size(frame_expanded),frame_dequant,frame_v_buff,pocs_params.r_pocs,frame_u,frame_l,pocs_vertical_run)
+                %Horizontal run
+                parallel_do(size(frame_graded),frame_v_buff,frame_dequant,pocs_params.r_pocs,pocs_horizontal_run)
+                parallel_do(size(frame_graded),frame_dequant,frame_v_buff,pocs_params.r_pocs,frame_u,frame_l,pocs_vertical_run)
             end
         endif
         
