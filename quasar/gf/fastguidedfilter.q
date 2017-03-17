@@ -2,6 +2,9 @@ import "imresize.q"
 import "boxfilter.q"
 import "linalg.q"
 
+{!author name="Gonzalo Luzardo"}
+{!doc category="Image Processing/Filters"}
+
 function q:mat = fastguidedfilter(I : mat, p : mat, r : scalar, eps : scalar, s : scalar = 4)
     %   GUIDEDFILTER   O(1) time implementation of guided filter.
     %
@@ -146,5 +149,41 @@ function res:mat = inv3x3(m:mat)
     res = res./d;
 end
 
+function [] = main()
+    I = imread("lena_big.tif") / 255
+    p = I
+    r = 4;
+    imshow(I,[0, 1])
+   
+    eps=0.1^2
+    q1=uninit(size(I))
+    tic()
+    q1[:,:,0] = fastguidedfilter(I[:,:,0], p[:,:,0], r, eps)
+    q1[:,:,1] = fastguidedfilter(I[:,:,1], p[:,:,1], r, eps)
+    q1[:,:,2] = fastguidedfilter(I[:,:,2], p[:,:,2], r, eps)
+    toc()
+    imshow(q1,[0, 1]);
 
+    eps = 0.2^2
+    q2=uninit(size(I))
+    tic()
+    q2[:,:,0] = fastguidedfilter(I[:,:,0], p[:,:,0], r, eps)
+    q2[:,:,1] = fastguidedfilter(I[:,:,1], p[:,:,1], r, eps)
+    q2[:,:,2] = fastguidedfilter(I[:,:,2], p[:,:,2], r, eps)
+    toc()
+    imshow(q2,[0, 1])
+    
+    eps = 0.4^2
+    q3=uninit(size(I))
+    tic()
+    q3[:,:,0] = fastguidedfilter(I[:,:,0], p[:,:,0], r, eps)
+    q3[:,:,1] = fastguidedfilter(I[:,:,1], p[:,:,1], r, eps)
+    q3[:,:,2] = fastguidedfilter(I[:,:,2], p[:,:,2], r, eps)
+    toc()
+    imshow(q3,[0, 1])
+
+
+end
+ 
+ 
  

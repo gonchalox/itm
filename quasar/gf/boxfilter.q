@@ -1,5 +1,8 @@
 import "system.q"
 
+{!author name="Gonzalo Luzardo"}
+{!doc category="Image Processing/Filters"}
+
 function imDst:mat = boxfilter(imSrc:mat, r:scalar)
     %   BOXFILTER   O(1) time box filtering using cumulative sum
     %
