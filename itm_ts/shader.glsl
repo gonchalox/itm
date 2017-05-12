@@ -102,9 +102,10 @@ void main() {
     u = RGBtou(In_RGB);
 	v = RGBtov(In_RGB);
 
-	if (Y < 0.00001)
+	//if (Y < 0.00001)
+	if (Y < 0.0000152587890625)
 	{
-		L = 0;
+		L = 0.0000152587890625;
 	}
 	else
 	{

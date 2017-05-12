@@ -18,17 +18,15 @@ import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
 % {b,c} anchors curve                                                  %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%Linearize
+function y = linearize(x)
+    y=sRGB_decode(x)
+end
 
-%// improved crosstalk –maintaining saturationfloat tonemappedMaximum; // 
-%max(color.r, color.g, color.b)float3 ratio;.
-%// color / tonemappedMaximumfloat crosstalk; 
-%// controls amount of channel crosstalkfloat saturation; 
-%// full tonal range saturation controlfloat crossSaturation; 
-%// crosstalk saturation
-%// wrap crosstalk in transformratio = pow(ratio, saturation / crossSaturation);
-%ratio = lerp(ratio, white, pow(tonemappedMaximum, crosstalk));
-%ratio = pow(ratio, crossSaturation);// final colorcolor = ratio * tonemappedMaximum;
-
+%Delinearize
+function y = delinearize(x)
+    y=sRGB_encode(x)
+end
 
 %Update B and C values
 function [] = updateBC(t:object)
@@ -36,6 +34,7 @@ function [] = updateBC(t:object)
     t.c= ((t.hdrMax^t.a)^t.d*t.midIn^t.a-t.hdrMax^t.a *(t.midIn^t.a)^t.d*t.midOut)/(((t.hdrMax^t.a)^t.d-(t.midIn^t.a)^t.d)*t.midOut)
 end
 
+%Clampp values between l and h
 function [y:vec3] = __device__ clamp_values(x:vec3'unchecked,l:scalar,h:scalar)
     y=uninit(size(x))
     for i=0..2
@@ -49,33 +48,72 @@ function [y:vec3] = __device__ clamp_values(x:vec3'unchecked,l:scalar,h:scalar)
     end
 end
 
-%Kernel to Apply tmo operator to Separation of Max an RGB ratio in parllel
-function [y:cube] = color_grade(x:cube,t:object)
-    function []= __kernel__ color_grade_kernel(x:cube'unchecked,y:cube'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,pos:ivec2)
-        {!kernel target="gpu"}
-        input=x[pos[0],pos[1],0..2];
-        
-        %Apply Separation of Max an RGB ratio
-        peak=max(input);
-        ratio=input/peak;
-        peak=(peak.^a)./(((peak.^a).^d).*b+c);
-        output=peak*ratio;
-        %Clamp and peak luminance ratio
-        output=p*clamp_values(output,0.0,1.0) %Clamp values between 0 and peak luminance
-        syncthreads
-        y[pos[0],pos[1],0..2]=output;
+%Apply lut
+function [y:cube] = EO_LUT(x:cube'unchecked,low:cube'unchecked,high:cube'unchecked,lut:vec'unchecked)
+    entries = max(size(lut))
+    function [] = __kernel__ EOTF_LUT_kern(x:cube'unchecked,y:cube'unchecked,low:cube'unchecked,high:cube'unchecked,lut:vec'clamped,resol:int,pos:ivec3)
+        index = floor(x[pos[0],pos[1],pos[2]]*(resol-1))
+        y[pos[0],pos[1],pos[2]] = lut[index]
+        low[pos[0],pos[1],pos[2]] = lut[index]-3*(lut[index]-lut[index-1])/2
+        high[pos[0],pos[1],pos[2]] = lut[index]+3*(lut[index+1]-lut[index])/2
     end
-    y=uninit(size(x))
-    parallel_do(size(x,0..1),x,y,t.a,t.b,t.c,t.d,t.peak_luminance,color_grade_kernel)
+    y = uninit(size(x))
+    parallel_do(size(y),x,y,low,high,lut,entries,EOTF_LUT_kern)
+end
+
+%%Kernel to Apply tmo operator to Separation of Max an RGB ratio in parllel
+function [y:vec3] = __device__ expandPixel(x:vec3,a:scalar,b:scalar,c:scalar,d:scalar,peak_lum:scalar)
+        %Apply Separation of Max an RGB ratio
+        peak=max(x)
+        ratio=x*(1/peak)
+        peak=(peak.^a)./(((peak.^a).^d).*b+c)
+        y:vec3=peak*ratio
+        y=peak_lum*y
+        %Clamp and peak luminance ratio
+        %output=p*clamp_values(output,0.0,1.0) %Clamp values between 0 and peak luminance
 end
 
 
-function y = linearize(x)
-    y=sRGB_decode(x./255.0)
+%         %Apply Separation of Max an RGB ratio
+%            m=max(x[pos[0],pos[1],:]);
+%            ratio=x[pos[0],pos[1],:]/m;
+%            m = m + b*(mask[pos[0],pos[1]])
+%            y[pos[0],pos[1],:]=m*ratio;
+%   
+
+%Apply lut take care of color change
+function [y:cube] = EO_LUT_CF(x:cube'unchecked,low:cube'unchecked,high:cube'unchecked,params:object,lut:vec'unchecked)
+    entries = max(size(lut))
+    function [] = __kernel__ EO_LUT_CF_kern(x:cube'unchecked,y:cube'unchecked,low:cube'unchecked,high:cube'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,lut:vec'clamped,resol:int,pos:ivec2)
+        input = [x[pos[0],pos[1],0],x[pos[0],pos[1],1],x[pos[0],pos[1],2]]
+        output=expandPixel(input,a,b,c,d,p)
+        y[pos[0],pos[1],0]=output[0]
+        y[pos[0],pos[1],1]=output[1]
+        y[pos[0],pos[1],2]=output[2]
+        %index = floor(y[pos[0],pos[1],pos[2]]*(resol-1))
+        
+        %low[pos[0],pos[1],pos[2]] = lut[index]-3*(lut[index]-lut[index-1])/2
+        %high[pos[0],pos[1],pos[2]] = lut[index]+3*(lut[index+1]-lut[index])/2
+    end
+    y = zeros(size(x))
+    parallel_do(size(x,0..1),x,y,low,high,params.a,params.b,params.c,params.d,params.peak_luminance,lut,entries,EO_LUT_CF_kern)
 end
 
-function y = delinearize(x)
-    y=sRGB_encode(x)
+function [out] = __device__ expandVal(in:scalar'unchecked,a,b,c,d,p)
+    out=(in.^a)./(((in.^a).^d).*b+c);
+    out=p*clamp(out,1.0) %Clamp values between 0 and peak luminance
+end
+
+%Kernel to Apply tmo operator to Separation of Max an RGB ratio in parllel
+function [y:vec] = getLut(x:vec,params:object)
+    function []= __kernel__ getLut_kernel(x:vec'unchecked, y:vec'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,pos:ivec2)
+        input=x[pos[0],pos[1]];
+        y[pos[0],pos[1]]= expandVal(input,a,b,c,d,p);
+    end
+    y=uninit(size(x)) 
+    %Linearize the image
+    %x=linearize(x)
+    parallel_do(size(x),x,y,params.a,params.b,params.c,params.d,params.peak_luminance,getLut_kernel)
 end
 
 %Unmake
@@ -101,29 +139,6 @@ function [] = __kernel__ pocs_vertical_run(y : cube'unchecked, _
         sum += x[pos + [m-r,0,0]]
     end
     y[pos] = min(max(sum/(2*r+1),low[pos]),high[pos])
-end
-
-%Apply lut
-% writes actual value in y_o, lower bound of quantization limit in low, higher bound in high
-function [] = apply_LUT(y:cube'unchecked,y_o:cube'unchecked,low:cube'unchecked,high:cube'unchecked,lut:vec'unchecked,step:'unchecked)
-    function [] = __kernel__ apply_LUT_kernel(y_o:cube'unchecked,low:cube'unchecked,high:cube'unchecked,lut:vec'clamped,step:int'unchecked,pos:ivec3)
-        index:int = floor(y[pos[0],pos[1],pos[2]])
-        y_o[pos[0],pos[1],pos[2]] = lut[index]
-        low[pos[0],pos[1],pos[2]] = lut[index]-(lut[index]-lut[index-step])/2
-        high[pos[0],pos[1],pos[2]] = lut[index]+(lut[index+step]-lut[index])/2
-    end
-    parallel_do(size(y),y_o,low,high,lut,step,apply_LUT_kernel)
-end
-
-%Linear simple expansion
-function [y:cube]=linear_expansion(x:cube'unchecked,max_value:scalar)
-    function []= __kernel__ linear_expansion_kernel(x:cube'unchecked,y:cube'unchecked,max_value:scalar,pos:ivec2)
-        {!kernel target="gpu"}
-        input=x[pos[0],pos[1],0..2];
-        y[pos[0],pos[1],0..2]=input*max_value;
-    end
-    y=uninit(size(x))
-    parallel_do(size(x,0..1),x,y,max_value,linear_expansion_kernel) %Size is WxH
 end
 
 %Get luminance using HSL color space
@@ -207,10 +222,13 @@ function [k]= getLogLumaNorm(luma_image:mat'unchecked)
     if (Lm == LM)
         d = 1
     else
-        d = log(LM)-log(Lm)    
+        d = log(LM+ep)-log(Lm+ep)    
     endif
     [m,n] = size(luma_image)
-    k=(sum(log(luma_image+ep))/(m*n)-log(Lm))/d
+    k=(sum(log(luma_image+ep))/(m*n)-log(Lm+ep))/d
+    if(k<0.0)
+        k=0.0
+    endif    
 end
 
 %Apply bright mask
@@ -233,94 +251,76 @@ function [y:cube]=apply_bright_mask(x:cube'unchecked,mask:mat'unchecked, params:
 end
 
 
-
-
 function [] = main()
-%    video_file_sdr="F:/HDR-SDR+-SDR/SDR/SC - manual grading/AutoWeldingClip.avi"
-%    video_file_sdr="F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
-%    video_file_sdr = "F:/more_content/Tomorrowland_2015__Official_Aftermovie.MP4"
-%video_file_sdr = "E:/tom_convert/SC-manual/BikeSparklers.avi"
-%video_file_sdr = "E:/tom_convert/SC-manual/BalloonFestival.avi"
-%video_file_sdr = "E:/tom_convert/SC-manual/Market.avi"
-%video_file_sdr = "E:/tom_convert/SC-manual/AutoWelding.avi"
-%video_file_sdr = "E:/tom_convert/SC-manual/Tibul.avi"
-%video_file_sdr = "E:/tom_convert/SC-manual/FireEater.avi"
-%video_file_sdr = "F:/movie_trailers/Interstellar_2014_trailer_2_5.1-1080p-HDTN.mp4"
-%    video_file_hdr = "F:\HDR-SDR+-SDR\HDR 4K nits\BikeSparklersClip.avi"
-%    video_file_sdr = "F:/movie_trailers/Mad_Max_Fury_Road_2015_Trailer_F4_5.1-1080p-HDTN.mp4"
-
-%video_file_sdr = "C:/Users/ipi/Downloads/A002C001_160611_R1NI.mxf"
-video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
-%    video_file_sdr="F:/movie_trailers/Interstellar_2014_trailer_2_5.1-1080p-HDTN.mp4"
-%    video_file_sdr="F:/movie_trailers/revenant-tlr1_h1080p.mov"
-%    video_file_sdr="F:/movie_trailers/rogueone-tsr1_h1080p.mov"
-%    video_file_sdr="F:/movie_trailers/beauty-and-the-beast-trailer-2_h1080p.mov"
-    
- %   video_file_sdr="F:/movie_trailers/Jemaine Clement - Shiny (From Moana).mp4"
-    
-%    Kvideo_file_sdr="F:/movie_trailers/Moirai_ls.mp4"
+    %Video to process
+    video_file_sdr="H:\H2DR\movie_trailers\AVATAR PANDORA TRAILER HD 1080p.mp4"
+    right_text_img = imread("Media/text_right.png")
+    left_text_img = imread("Media/text_left.png")
+    mask_text_img = imread("Media/text_mask.png")
+    p=8 %8 bits original file
+    n=16
+    x_pos_tit = 20%150
 
     %%%%%%%%%%%%%% Output PNG file path %%%%%%%%%%%%
     png_out_folder = "C:/Users/ipi/Videos/"
-    png_frame_counter=1;
+    png_frame_counter=1
     png_out_w = 1920
     png_out_h = 1080    
                 
     %%%%%%%%%%%%%%%% General Params %%%%%%%%%%%%%%%%
     general_params = object()
-    target_bits_per_color = 16.0 %Number of bits
-    max_value = 2^target_bits_per_color-1
+    peak_luminance_sim2=6000.0;
     sdr_factor = 2.5; % 600 nits
           
     %%%%%%%%%%%%%%%% Denoising PARAMS %%%%%%%%%%%%%%%
     gf_params = object()
     gf_params.r=16
-    gf_params.epsf=1.4%1.12
+    gf_params.epsf=1.2%1.12
     gf_params.eps=(gf_params.epsf)^4;
     
     %%%%%%%%%%% Automatic  dark, normal, bright classification %%%%%%%%%
     %threshold
-    th_dark_norm = 0.35
-    th_norm_bright = 0.7
+    th_dark_norm = 0.45
+    th_norm_bright = 0.65
     
     %Learning time
     l_high = 0.25
     l_low = 0.5
     
     %Values for middle gray out
-    mid_out_normal = 0.22
-    mid_out_dark = 0.18
-    mid_out_bright = 0.35
+    mid_out_normal = 0.18
+    mid_out_dark = 0.10 %dark or dim
+    mid_out_bright = 0.235
     %Values for maximum brigthness 
-    max_bright_normal = 0.7
+    max_bright_normal = 0.8
     max_bright_dark = 0.4
     max_bright_bright = 0.9
     
-    %%%%%%%%%%%%  Color graded PARAMS %%%%%%%%%%%%%%%%
-    % Derfault params
-    tmo_params = object()
-    tmo_params.a:scalar= 1.22% 1%1.22 % Contrast
-    tmo_params.d:scalar = 2.82 % 0.995%1.77  % Shoulder
-    tmo_params.midIn:scalar=(0.5)*(max_value);
-    tmo_params.midOut:scalar= mid_out_dark %0.063 %This value could be change dynamically .. TODO 0.18 HDR
-    tmo_params.hdrMax:scalar=max_value %HDR Max value default (in image)
-    tmo_params.peak_luminance:scalar=max_bright_dark    %0.8  %0.67 %Peak luminance in TMO
-    updateBC(tmo_params);
+    %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
+    % Default params
+    eo_params = object()
+    eo_params.a:scalar= 2.78 % Contrast
+    eo_params.d:scalar = 0.7 % Shoulder
+    eo_params.midIn:scalar=0.5
+    eo_params.midOut:scalar= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    eo_params.hdrMax:scalar=1.0
+    eo_params.peak_luminance:scalar=0.75%max_bright_normal    %0.8  %0.67 %Peak luminance in TMO
+    updateBC(eo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%
     pocs_params = object();
-    pocs_params.r_pocs=6  %R?
+    pocs_params.r_pocs=3  %R?
     pocs_params.it=6
-    pocs_params.steps=48
+    pocs_params.steps=1
     
     %%%%%%%%%%% ENHANCE BRIGHT %%%%%%%%%%%
     eb_params = object()
-    eb_params.th_luma=linearize(222)  %Luminance Didyk
-    eb_params.th_sat=0.95%linearize(230)  %Saturation LDR2HDR
-    eb_params.f=2.0; 
+    eb_params.th_luma=222/255  %Luminance Didyk
+    eb_params.th_sat=230/255  %Saturation LDR2HDR
+    eb_params.f=4.16 
     eb_params.gf=true; 
-    eb_params.boost_luminance = 1-tmo_params.peak_luminance;
-    eb_params.method = 0; %0-Adding the mask   %1-Multiply the mask
+    eb_params.boost_luminance = 1-eo_params.peak_luminance
+    eb_params.method = 0 %0-Adding the mask   %1-Multiply the mask
     
     %%%%%%%%%%%%%%%%%%%% FORMS %%%%%%%%%%%%%%%%%%%%%%%
     frm = form("Color grading")  
@@ -337,9 +337,8 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
     bright_status=frm_cl.add_button("Dark")
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
+    %Opem stream
     stream = vidopen(video_file_sdr) % Opens the specified video file for playing
-    %stream_hdr = vidopen(video_file_hdr) % Opens the specified video file for playing
-    %stream.bits_per_color = 8;
 
     %Variables
     s_width=stream.frame_width
@@ -348,7 +347,6 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
     frame = cube(s_height,s_width,3)
     frame_denoised = cube(s_height,s_width,3)
     frame_expanded = cube(s_height,s_width,3)
-    frame_graded = cube(s_height,s_width,3)
     
     frame_bright_mask = mat(s_height,s_width)
     frame_luma = mat(s_height,s_width)
@@ -382,25 +380,25 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
  
     frm.add_heading("POCS")
     cb_pocs = frm.add_checkbox("POCS: ", true)
-    slider_pocs_steps = frm.add_slider("S:",pocs_params.steps,1,512)
+    slider_pocs_r = frm.add_slider("R:",pocs_params.r_pocs,1,20)
+    slider_pocs_steps = frm.add_slider("S:",pocs_params.steps,1,20)
     
     frm.add_heading("Brightness enhancement mask computation")
     slider_brightness_th_luma = frm.add_slider("Luminance(th1):",eb_params.th_luma,0.1,1.1)
     slider_brightness_th_sat = frm.add_slider("Saturation(th2):",eb_params.th_sat,0.1,1.1)
-    slider_brightness_f = frm.add_slider("Remove Glow:",eb_params.f,1.0,10)
+    slider_brightness_f = frm.add_slider("Remove Glow:",eb_params.f,1.0,40)
     cb_enhance_brightness_gf = frm.add_checkbox("Edge stop and smooth: ", true)
     cb_show_brightness_mask = frm.add_checkbox("Show Mask (left) ", false)
     frm.add_heading("HDR Brightness enhancement ")
     cb_enhance_brightness_add = frm.add_checkbox("Enhance Brigthness by addition: ", true)
     cb_enhance_brightness_mult = frm.add_checkbox("Enhance Brigthness by multiplying  ", false)
     
-            
     frm.add_heading("Color grading params")
-    slider_max_lum = frm_cl.add_slider("Maximun luminance:",tmo_params.peak_luminance,0.1,1)
-    slider_a = frm.add_slider("Contrast(a):",tmo_params.a,0.0,10.0)
-    slider_d = frm.add_slider("Shoulder(d):",tmo_params.d,0.0,10.0)
+    slider_max_lum = frm_cl.add_slider("Maximun luminance:",eo_params.peak_luminance,0.1,1)
+    slider_a = frm.add_slider("Contrast(a):",eo_params.a,0.0,10.0)
+    slider_d = frm.add_slider("Shoulder(d):",eo_params.d,0.0,10.0)
     %slider_midIn = frm.add_slider("Mid In :",tmo_params.midIn,0.0,max_value)
-    slider_midOut =  frm_cl.add_slider("Mid Out (*) :",tmo_params.midOut,0.0,1)
+    slider_midOut =  frm_cl.add_slider("Mid Out (*) :",eo_params.midOut,0.0,1)
     
     frm.add_heading("Video Player")
     vidstate = object()
@@ -415,7 +413,7 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
     params_display = frm.add_display()
     
     %Events
-    slider_max_lum.onchange.add(()-> (tmo_params.peak_luminance = slider_max_lum.value;
+    slider_max_lum.onchange.add(()-> (eo_params.peak_luminance = slider_max_lum.value;
                                       eb_params.boost_luminance = 1-slider_max_lum.value;);)
                                       
     slider_brightness_th_luma.onchange.add(()-> (eb_params.th_luma = slider_brightness_th_luma.value);)                        
@@ -440,15 +438,17 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
     
     cb_no_line.onchange.add(()-> (cb_moving_line.value = false;)) 
     
-    slider_a.onchange.add(()-> (tmo_params.a = slider_a.value;
-                                updateBC(tmo_params)))      
+    slider_a.onchange.add(()-> (eo_params.a = slider_a.value;
+                                updateBC(eo_params)))      
                                 
-    slider_d.onchange.add(()-> (tmo_params.d = slider_d.value;
-                                updateBC(tmo_params)))    
+    slider_d.onchange.add(()-> (eo_params.d = slider_d.value;
+                                updateBC(eo_params)))    
                                   
     slider_denoising_epsf.onchange.add(()-> (gf_params.epsf = slider_denoising_epsf.value;
-                                             gf_params.eps = (gf_params.epsf)^2))      
-  
+                                             gf_params.eps=(gf_params.epsf)^4;))      
+    
+    slider_pocs_r.onchange.add(()-> (pocs_params.r_pocs = floor(slider_pocs_r.value)))                                
+    
     slider_pocs_steps.onchange.add(()-> (pocs_params.steps = floor(slider_pocs_steps.value)))                                
 
     button_stop.onclick.add(() -> vidstate.is_playing = false)
@@ -460,25 +460,29 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
     position.onchange.add(() -> vidstate.allow_seeking ? vidseek(stream, position.value/stream.avg_frame_rate) : [])
   
     %Using mid-level mapping to adjust brightness pre-tonemappingkeeps contrast and saturation consistent 
-%    slider_midIn.onchange.add(()-> (tmo_params.midIn = slider_midIn.value;
+%   slider_midIn.onchange.add(()-> (tmo_params.midIn = slider_midIn.value;
 %                                updateBC(tmo_params)))          
 
-    slider_midOut.onchange.add(()-> (tmo_params.midOut = slider_midOut.value;
-                                updateBC(tmo_params)))                        
+    slider_midOut.onchange.add(()-> (eo_params.midOut = slider_midOut.value;
+                                updateBC(eo_params)))                        
     %Denoising
     cb_denoise.onchange.add(()-> (denoising=cb_denoise.value;))
-    val_in=float(0.0..max_value/(2^target_bits_per_color-1)..max_value)
-    cmploc = s_width/2;
-    xloc = mod(cmploc,2*size(frame_show,1))
-    log_luma_norm = 0;
+    
+    %Curve
+    val_in=0.0..1/(2^p-1)..1.0
+    
+    %To show the comparisson line
+    xloc = floor(s_width/2)
+    steps = 10
+    log_luma_norm = 0.0;
+    %vidseek(stream, 39)
     
     repeat
         %tic()
         if(cb_moving_line.value)
-            cmploc += floor(s_width/100)
-            xloc = mod(cmploc,2*size(frame_show,1))
-            if xloc >= size(frame_show,1)
-                xloc = 2*size(frame_show,1)-xloc-1
+            xloc = xloc+steps
+            if (xloc >= 3*s_width/4 || xloc <= s_width/4)
+                steps=-steps;
             endif
         endif
         % Reads until there is no frame left. 
@@ -508,73 +512,73 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
             frame_denoised=frame
         endif    
         
-        %Linearize frame (normalized)
-        frame_denoised = linearize(frame_denoised) %Max value
+        %Normalized
+        frame_denoised = frame_denoised/255.0 %Max value
 
         %Get frame luminance
-        frame_luma = getLuminanceImage(frame_denoised)
+        frame_luma = getLuminanceImage(frame_denoised) %Not linearized
         log_luma_norm = 0.5*log_luma_norm + 0.5*getLogLumaNorm(frame_luma)
         slider_LogLumaNorm.value = log_luma_norm
         
         %Get bright mask
         frame_bright_mask = get_bright_mask(frame_denoised,frame_luma,eb_params)                                
                                                                                                 
-        %Linear expansion SIM2 16 stops
-        frame_expanded=linear_expansion(frame_denoised,max_value) %Expand to max value
-             
-        %Calc LUT for POCS and iTMO
-        lut=color_grade(val_in,tmo_params)
+        %Calc LUT for POCS and iTMO, this lut includes linearize procedure
+        lut=getLut(val_in,eo_params)
+        params_display.plot(val_in,lut);
         
-%        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%        % Update mid out and maximum brightness
-%        reach_midOut = 0;
-%        reach_bright = 0;
-%        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
-%            reach_midOut = mid_out_dark;
-%            reach_bright = max_bright_dark;
-%            bright_status.text = "Dark"
-%        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
-%            reach_midOut = mid_out_normal;
-%            reach_bright = max_bright_normal;
-%            bright_status.text = "Normal"
-%        else %Bright > 0.8
-%            reach_midOut = mid_out_bright;
-%            reach_bright = max_bright_bright;
-%            bright_status.text = "Bright"
-%        endif
-%        
-%        % Update reach luminance
-%        if(reach_bright > tmo_params.peak_luminance) %Up luminance
-%            tmo_params.peak_luminance = tmo_params.peak_luminance + l_high*abs(reach_bright-tmo_params.peak_luminance)
-%            eb_params.boost_luminance = 1-tmo_params.peak_luminance
-%            slider_max_lum.value = tmo_params.peak_luminance
-%        elseif(reach_bright < tmo_params.peak_luminance)%Down luminance
-%            tmo_params.peak_luminance = tmo_params.peak_luminance - l_low*abs(reach_bright-tmo_params.peak_luminance)
-%            eb_params.boost_luminance = 1-tmo_params.peak_luminance
-%            slider_max_lum.value = tmo_params.peak_luminance
-%        endif
-%        
-%        %Update mid_out
-%        if(reach_midOut > tmo_params.midOut) %Up luminance
-%            tmo_params.midOut = tmo_params.midOut + l_high*abs(reach_midOut-tmo_params.midOut)
-%            slider_midOut.value = tmo_params.midOut
-%            updateBC(tmo_params)
-%        elseif(reach_midOut < tmo_params.midOut)%Down luminance
-%            tmo_params.midOut = tmo_params.midOut - l_low*abs(reach_midOut-tmo_params.midOut)
-%            slider_midOut.value = tmo_params.midOut
-%            updateBC(tmo_params)
-%        endif
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+         Update mid out and maximum brightness
+        reach_midOut = 0;
+        reach_bright = 0;
+        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
+            reach_midOut = mid_out_dark;
+            reach_bright = max_bright_dark;
+            bright_status.text = "Dark"
+        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
+            reach_midOut = mid_out_normal;
+            reach_bright = max_bright_normal;
+            bright_status.text = "Normal"
+        else %Bright > 0.8
+            reach_midOut = mid_out_bright;
+            reach_bright = max_bright_bright;
+            bright_status.text = "Bright"
+        endif
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Update reach luminance
+        if(reach_bright > eo_params.peak_luminance) %Up luminance
+            eo_params.peak_luminance = eo_params.peak_luminance + l_high*abs(reach_bright-eo_params.peak_luminance)
+            eb_params.boost_luminance = 1-eo_params.peak_luminance
+            slider_max_lum.value = eo_params.peak_luminance
+        elseif(reach_bright < eo_params.peak_luminance)%Down luminance
+            eo_params.peak_luminance = eo_params.peak_luminance - l_low*abs(reach_bright-eo_params.peak_luminance)
+            eb_params.boost_luminance = 1-eo_params.peak_luminance
+            slider_max_lum.value = eo_params.peak_luminance
+        endif
         
-        %Grading and get L and H frames
-        apply_LUT(frame_expanded,frame_graded,frame_l,frame_u,lut,pocs_params.steps)
+        %Update mid_out
+        if(reach_midOut > eo_params.midOut) %Up luminance
+            eo_params.midOut = eo_params.midOut + l_high*abs(reach_midOut-eo_params.midOut)
+            slider_midOut.value = eo_params.midOut
+            updateBC(eo_params)
+        elseif(reach_midOut < eo_params.midOut)%Down luminancesnip
+            eo_params.midOut = eo_params.midOut - l_low*abs(reach_midOut-eo_params.midOut)
+            slider_midOut.value = eo_params.midOut
+            updateBC(eo_params)
+        endif
+        
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        
+        %Aplly LUT and get L and H frames
+        %frame_expanded = EO_LUT_CF(frame_denoised,frame_l,frame_u,eo_params,lut)
+        frame_expanded = EO_LUT(frame_denoised,frame_l,frame_u,lut)
+        
         %POCS
-        frame_dequant = frame_graded
+        frame_dequant = copy(frame_expanded)
         if(cb_pocs.value)
             for i = 1..6
-                parallel_do(size(frame_graded),frame_v_buff,frame_dequant,pocs_params.r_pocs,pocs_horizontal_run)
-                parallel_do(size(frame_graded),frame_dequant,frame_v_buff,pocs_params.r_pocs,frame_u,frame_l,pocs_vertical_run)
+                parallel_do(size(frame_dequant),frame_v_buff,frame_dequant,pocs_params.r_pocs,pocs_horizontal_run)
+                parallel_do(size(frame_dequant),frame_dequant,frame_v_buff,pocs_params.r_pocs,frame_u,frame_l,pocs_vertical_run)
             end
         endif
         
@@ -582,13 +586,12 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
             frame_dequant = apply_bright_mask(frame_dequant,frame_bright_mask,eb_params)
         endif
         
-        %Show curve
-        params_display.plot(val_in,lut);
-        
         %Create show frame
         %Show mask instead original video
         if(cb_no_line.value)
             frame_show=frame_dequant;
+            %Add text
+            %frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
         else
             if(cb_side_by_side.value)
                 %Must be 540x960 each image
@@ -603,30 +606,35 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
                     frame_show[:,0..xloc,0]=frame_bright_mask[:,0..xloc]
                     frame_show[:,0..xloc,1]=frame_bright_mask[:,0..xloc]
                     frame_show[:,0..xloc,2]=frame_bright_mask[:,0..xloc]
+                    %Add text
+                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = mask_text_img[:,:,0..2]/1024;
                 else
-                    frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:])/sdr_factor
+                    frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:]/255)
+                    %frame_show[:,0..xloc,:]=frame_expanded[:,0..xloc,:]
+
+                    %Add text
+                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = left_text_img[:,:,0..2]/1024;
                 endif
                 
                 %Show processed
                 frame_show[:,xloc..s_width-1,:]=frame_dequant[:,xloc..s_width-1,:]
-                    
+                %Add text
+                frame_show[x_pos_tit..x_pos_tit+43,1600..1600+277,:] = right_text_img[:,:,0..2]/1024;    
                 %Black vertical line
                 frame_show[:,xloc..xloc+1,:]=0
             endif
         endif            
 
-%        h = hdr_imshow(frame_show*max_value,[0,max_value])
-       
-       %SIM2 LDR 600nits
-       h = hdr_imshow(frame_show*max_value/sdr_factor,[0,max_value])
+    
+        h = hdr_imshow(frame_show,[0,1.0])
 
-       %LDR       
-     %  im_ldr=delinearize(frame_show)*255
-     %  h=imshow(im_ldr,[0,255])
-     %  png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+%       %LDR       
+%       im_ldr=delinearize(frame_show)*255
+%       h=imshow(im_ldr,[0,255])
+%       png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 %       imwrite(png_path, im_ldr)
-%%     
-       % 
+%     
+        
         % Save in PNG      
         if(cb_record.value) 
 %             sim2_img = rgb2sim2(frame_show*max_value,1)
