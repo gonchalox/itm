@@ -10,7 +10,6 @@ import "system.q"
 import "colortransform.q"
 import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
 import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
-import "exr_lib.dll"
 
 %Linearize
 function y = linearize(x)
@@ -255,17 +254,11 @@ end
 
 function [] = main()
     %Video to process
-    input_type = 0
-    video_file_sdr="H:/ldr_plus_video.mov"
-    
-    start_frame=1081191
-    current_frame=1081191
-    last_frame=1081191
-    
+    video_file_sdr="H:\H2DR\movie_trailers\tears_of_steel_720p.mov"
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")
-    p=8 %8 bits original file, for EXR files the data is between 0 and 1
+    p=8 %8 bits original file
     n=16
     x_pos_tit = 20%150
 
@@ -283,13 +276,13 @@ function [] = main()
     %%%%%%%%%%%%%%%% Denoising PARAMS %%%%%%%%%%%%%%%
     gf_params = object()
     gf_params.r=16
-    gf_params.epsf=0.84%1.12
+    gf_params.epsf=1.2%1.12
     gf_params.eps=(gf_params.epsf)^4;
     
     %%%%%%%%%%% Automatic  dark, normal, bright classification %%%%%%%%%
     %threshold
-    th_dark_norm = 0.40
-    th_norm_bright = 0.7
+    th_dark_norm = 0.45
+    th_norm_bright = 0.65
     
     %Learning time
     l_high = 0.25
@@ -300,15 +293,15 @@ function [] = main()
     mid_out_dark = 0.10 %dark or dim
     mid_out_bright = 0.235
     %Values for maximum brigthness 
-    max_bright_normal = 0.5
-    max_bright_dark = 0.3
+    max_bright_normal = 0.8
+    max_bright_dark = 0.4
     max_bright_bright = 0.9
     
     %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
     % Default params
     eo_params = object()
-    eo_params.a:scalar= 1.45 % Contrast
-    eo_params.d:scalar = 4.7 % Shoulder
+    eo_params.a:scalar= 2.78 % Contrast
+    eo_params.d:scalar = 0.7 % Shoulder
     eo_params.midIn:scalar=0.5
     eo_params.midOut:scalar= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
     eo_params.hdrMax:scalar=1.0
@@ -317,7 +310,7 @@ function [] = main()
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%
     pocs_params = object();
-    pocs_params.r_pocs=1  %R?
+    pocs_params.r_pocs=3  %R?
     pocs_params.it=6
     pocs_params.steps=1
     
@@ -346,19 +339,11 @@ function [] = main()
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     %Opem stream
-    if(input_type==0)
-        stream = vidopen(video_file_sdr) % Opens the specified video file for playing
-    endif
+    stream = vidopen(video_file_sdr) % Opens the specified video file for playing
 
     %Variables
-    if(input_type==0)
-        s_width=stream.frame_width
-        s_height=stream.frame_height
-    else
-        s_height = 1080
-        s_width = 1920
-    endif    
-            
+    s_width=stream.frame_width
+    s_height=stream.frame_height
     
     frame = cube(s_height,s_width,3)
     frame_denoised = cube(s_height,s_width,3)
@@ -380,9 +365,7 @@ function [] = main()
     looping = false
 
     % Sets the frame rate for the imshow function
-    if(input_type==0)
-        sync_framerate(stream.avg_frame_rate)
-    endif     
+    sync_framerate(stream.avg_frame_rate) 
     
     % GUI
     frm.add_heading("General parameters")
@@ -393,7 +376,7 @@ function [] = main()
     cb_record = frm.add_checkbox("Recording", false )
     
     frm.add_heading("Denoising parameters (LDR non-linear space)")
-    cb_denoise = frm.add_checkbox("Denoising: ", true)
+    cb_denoise = frm.add_checkbox("Denoising: ", false)
     slider_denoising_epsf = frm.add_slider("Denoising factor:",gf_params.epsf,0.0,20.0)
  
     frm.add_heading("POCS")
@@ -428,8 +411,6 @@ function [] = main()
     button_fullrewind=frm.add_button("Full rewind")
     button_fullrewind.icon = imread("Media/control_start_blue.png")
     position = frm.add_slider("Position",0,0,floor(stream.duration_sec*stream.avg_frame_rate))
-    
-            
     params_display = frm.add_display()
     
     %Events
@@ -493,9 +474,9 @@ function [] = main()
     
     %To show the comparisson line
     xloc = floor(s_width/2)
-    steps = 20
+    steps = 10
     log_luma_norm = 0.0;
-    %vidseek(stream, 282)
+    %vidseek(stream, 39)
     
     repeat
         %tic()
@@ -505,33 +486,21 @@ function [] = main()
                 steps=-steps;
             endif
         endif
-        
         % Reads until there is no frame left. 
         if vidstate.is_playing 
-            if(input_type==0)
-                %if (!vidreadframe(stream) || !vidreadframe(stream_hdr))
-                if (!vidreadframe(stream))
-                    if looping
-                        % Jump back to the first frame
-                        vidseek(stream, 0)
-                    else
-                        break
-                    endif
+            %if (!vidreadframe(stream) || !vidreadframe(stream_hdr))
+            if (!vidreadframe(stream))
+                if looping
+                    % Jump back to the first frame
+                    vidseek(stream, 0)
+                else
+                    break
                 endif
-            else
-                if (looping && current_frame==last_frame)
-                    current_frame=start_frame
-                endif    
             endif
         endif
         
         %Read frames
-        if(input_type==0)
-            frame = float(stream.rgb_data)/2^8
-        else
-            img_file = sprintf(video_file_sdr,current_frame);
-            frame = 255*exrread(img_file).data;     
-        endif
+        frame = float(stream.rgb_data)
         
         %Denoising using fast joint bilateral filter (guided filter) 
         if(cb_denoise.value)
@@ -561,7 +530,7 @@ function [] = main()
         g.title = "iTMO Curve"
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % Update mid out and maximum brightness
+         Update mid out and maximum brightness
         reach_midOut = 0;
         reach_bright = 0;
         if(slider_LogLumaNorm.value < th_dark_norm) %Dark
@@ -625,7 +594,7 @@ function [] = main()
         if(cb_no_line.value)
             frame_show=frame_dequant;
             %Add text
-            %frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
+            frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
         else
             if(cb_side_by_side.value)
                 frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame/255),0.5,"nearest")/sdr_factor;
@@ -654,11 +623,11 @@ function [] = main()
         endif            
 
     
-        h = hdr_imshow(frame_show,[0,1.0])
+        %h = hdr_imshow(frame_show,[0,1.0])
 
        %LDR       
-       %im_ldr=(frame_show.^0.29)
-       %h=imshow(im_ldr,[0,1])
+       im_ldr=(frame_show.^0.29)
+       h=imshow(im_ldr,[0,1])
 %       png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 %       imwrite(png_path, im_ldr)
 %     
@@ -681,9 +650,8 @@ function [] = main()
 
         %toc()
         %Update position slider
-        position.value = floor(stream.pts*stream.avg_frame_rate)
-        %png_frame_counter=png_frame_counter+1
-        png_frame_counter= position.value
+        position.value = stream.pts*stream.avg_frame_rate
+        png_frame_counter=png_frame_counter+1
         pause(0)
     until !hold("on")
 end

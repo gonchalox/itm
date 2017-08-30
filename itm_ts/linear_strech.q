@@ -12,6 +12,7 @@ import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
 import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
 import "exr_lib.dll"
 
+
 %Linearize
 function y = linearize(x)
     y=sRGB_decode(x)
@@ -393,7 +394,7 @@ function [] = main()
     cb_record = frm.add_checkbox("Recording", false )
     
     frm.add_heading("Denoising parameters (LDR non-linear space)")
-    cb_denoise = frm.add_checkbox("Denoising: ", true)
+    cb_denoise = frm.add_checkbox("Denoising: ", false)
     slider_denoising_epsf = frm.add_slider("Denoising factor:",gf_params.epsf,0.0,20.0)
  
     frm.add_heading("POCS")
@@ -408,7 +409,7 @@ function [] = main()
     cb_enhance_brightness_gf = frm.add_checkbox("Edge stop and smooth: ", true)
     cb_show_brightness_mask = frm.add_checkbox("Show Mask (left) ", false)
     frm.add_heading("HDR Brightness enhancement ")
-    cb_enhance_brightness_add = frm.add_checkbox("Enhance Brigthness by addition: ", true)
+    cb_enhance_brightness_add = frm.add_checkbox("Enhance Brigthness by addition: ", false)
     cb_enhance_brightness_mult = frm.add_checkbox("Enhance Brigthness by multiplying  ", false)
     
     frm.add_heading("Color grading params")
@@ -548,113 +549,114 @@ function [] = main()
         frame_denoised = frame_denoised/255.0 %Max value
 
         %Get frame luminance
-        frame_luma = getLuminanceImage(frame_denoised) %Not linearized
-        log_luma_norm = 0.5*log_luma_norm + 0.5*getLogLumaNorm(frame_luma)
-        slider_LogLumaNorm.value = log_luma_norm
-        
+%        frame_luma = getLuminanceImage(frame_denoised) %Not linearized
+%        log_luma_norm = 0.5*log_luma_norm + 0.5*getLogLumaNorm(frame_luma)
+%        slider_LogLumaNorm.value = log_luma_norm
+%        
         %Get bright mask
-        frame_bright_mask = get_bright_mask(frame_denoised,frame_luma,eb_params)                                
-                                                                                                
-        %Calc LUT for POCS and iTMO, this lut includes linearize procedure
-        lut=getLut(val_in,eo_params)
-        g = params_display.plot(val_in,lut);
-        g.title = "iTMO Curve"
-        
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % Update mid out and maximum brightness
-        reach_midOut = 0;
-        reach_bright = 0;
-        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
-            reach_midOut = mid_out_dark;
-            reach_bright = max_bright_dark;
-            bright_status.text = "Dark"
-        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
-            reach_midOut = mid_out_normal;
-            reach_bright = max_bright_normal;
-            bright_status.text = "Normal"
-        else %Bright > 0.8
-            reach_midOut = mid_out_bright;
-            reach_bright = max_bright_bright;
-            bright_status.text = "Bright"
-        endif
-        
-        % Update reach luminance
-        if(reach_bright > eo_params.peak_luminance) %Up luminance
-            eo_params.peak_luminance = eo_params.peak_luminance + l_high*abs(reach_bright-eo_params.peak_luminance)
-            eb_params.boost_luminance = 1-eo_params.peak_luminance
-            slider_max_lum.value = eo_params.peak_luminance
-        elseif(reach_bright < eo_params.peak_luminance)%Down luminance
-            eo_params.peak_luminance = eo_params.peak_luminance - l_low*abs(reach_bright-eo_params.peak_luminance)
-            eb_params.boost_luminance = 1-eo_params.peak_luminance
-            slider_max_lum.value = eo_params.peak_luminance
-        endif
-        
-        %Update mid_out
-        if(reach_midOut > eo_params.midOut) %Up luminance
-            eo_params.midOut = eo_params.midOut + l_high*abs(reach_midOut-eo_params.midOut)
-            slider_midOut.value = eo_params.midOut
-            updateBC(eo_params)
-        elseif(reach_midOut < eo_params.midOut)%Down luminancesnip
-            eo_params.midOut = eo_params.midOut - l_low*abs(reach_midOut-eo_params.midOut)
-            slider_midOut.value = eo_params.midOut
-            updateBC(eo_params)
-        endif
+%        frame_bright_mask = get_bright_mask(frame_denoised,frame_luma,eb_params)                                
+%                                                                                                
+%        %Calc LUT for POCS and iTMO, this lut includes linearize procedure
+%        lut=getLut(val_in,eo_params)
+%        g = params_display.plot(val_in,lut);
+%        g.title = "iTMO Curve"
+%        
+%        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        % Update mid out and maximum brightness
+%        reach_midOut = 0;
+%        reach_bright = 0;
+%        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
+%            reach_midOut = mid_out_dark;
+%            reach_bright = max_bright_dark;
+%            bright_status.text = "Dark"
+%        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
+%            reach_midOut = mid_out_normal;
+%            reach_bright = max_bright_normal;
+%            bright_status.text = "Normal"
+%        else %Bright > 0.8
+%            reach_midOut = mid_out_bright;
+%            reach_bright = max_bright_bright;
+%            bright_status.text = "Bright"
+%        endif
+%        
+%        % Update reach luminance
+%        if(reach_bright > eo_params.peak_luminance) %Up luminance
+%            eo_params.peak_luminance = eo_params.peak_luminance + l_high*abs(reach_bright-eo_params.peak_luminance)
+%            eb_params.boost_luminance = 1-eo_params.peak_luminance
+%            slider_max_lum.value = eo_params.peak_luminance
+%        elseif(reach_bright < eo_params.peak_luminance)%Down luminance
+%            eo_params.peak_luminance = eo_params.peak_luminance - l_low*abs(reach_bright-eo_params.peak_luminance)
+%            eb_params.boost_luminance = 1-eo_params.peak_luminance
+%            slider_max_lum.value = eo_params.peak_luminance
+%        endif
+%        
+%        %Update mid_out
+%        if(reach_midOut > eo_params.midOut) %Up luminance
+%            eo_params.midOut = eo_params.midOut + l_high*abs(reach_midOut-eo_params.midOut)
+%            slider_midOut.value = eo_params.midOut
+%            updateBC(eo_params)
+%        elseif(reach_midOut < eo_params.midOut)%Down luminancesnip
+%            eo_params.midOut = eo_params.midOut - l_low*abs(reach_midOut-eo_params.midOut)
+%            slider_midOut.value = eo_params.midOut
+%            updateBC(eo_params)
+%        endif
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
         %Aplly LUT and get L and H frames
         %frame_expanded = EO_LUT_CF(frame_denoised,frame_l,frame_u,eo_params,lut)
-        frame_expanded = EO_LUT(frame_denoised,frame_l,frame_u,lut)
+        frame_dequant = frame_denoised
         
         %POCS
-        frame_dequant = copy(frame_expanded)
-        if(cb_pocs.value)
-            for i = 1..6
-                parallel_do(size(frame_dequant),frame_v_buff,frame_dequant,pocs_params.r_pocs,pocs_horizontal_run)
-                parallel_do(size(frame_dequant),frame_dequant,frame_v_buff,pocs_params.r_pocs,frame_u,frame_l,pocs_vertical_run)
-            end
-        endif
-        
-        if(cb_enhance_brightness_add.value || cb_enhance_brightness_add.value)
-            frame_dequant = apply_bright_mask(frame_dequant,frame_bright_mask,eb_params)
-        endif
-        
+%        frame_dequant = copy(frame_expanded)
+%        if(cb_pocs.value)
+%            for i = 1..6
+%                parallel_do(size(frame_dequant),frame_v_buff,frame_dequant,pocs_params.r_pocs,pocs_horizontal_run)
+%                parallel_do(size(frame_dequant),frame_dequant,frame_v_buff,pocs_params.r_pocs,frame_u,frame_l,pocs_vertical_run)
+%            end
+%        endif
+%        
+%        if(cb_enhance_brightness_add.value || cb_enhance_brightness_add.value)
+%            frame_dequant = apply_bright_mask(frame_dequant,frame_bright_mask,eb_params)
+%        endif
+%        
         %Create show frame
         %Show mask instead original video
-        frame_show=zeros(size(frame_show));
-        if(cb_no_line.value)
-            frame_show=frame_dequant;
-            %Add text
-            %frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
-        else
-            if(cb_side_by_side.value)
-                frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame/255),0.5,"nearest")/sdr_factor;
-                frame_show[s_height/4..s_height/4+s_height/2-1,s_width/2..s_width-1,:] = imresize(frame_dequant,0.5,"nearest")
-            else
-                if(cb_show_brightness_mask.value)
-                    frame_show[:,0..xloc,0]=frame_bright_mask[:,0..xloc]
-                    frame_show[:,0..xloc,1]=frame_bright_mask[:,0..xloc]
-                    frame_show[:,0..xloc,2]=frame_bright_mask[:,0..xloc]
-                    %Add text
-                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = mask_text_img[:,:,0..2]/1024;
-                else
-                    frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:]/255)
-                    %frame_show[:,0..xloc,:]=frame_expanded[:,0..xloc,:]
-                    %Add text
-                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = left_text_img[:,:,0..2]/1024;
-                endif
-                
-                %Show processed
-                frame_show[:,xloc..s_width-1,:]=frame_dequant[:,xloc..s_width-1,:]
-                %Add text
-                frame_show[x_pos_tit..x_pos_tit+43,s_width-320..s_width-20+277,:] = right_text_img[:,:,0..2]/1024;    
-                %Black vertical line
-                frame_show[:,xloc..xloc+1,:]=0
-            endif
-        endif            
+%        frame_show=zeros(size(frame_show));
+%        if(cb_no_line.value)
+%            frame_show=frame_dequant;
+%            %Add text
+%            %frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
+%        else
+%            if(cb_side_by_side.value)
+%                frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame/255),0.5,"nearest")/sdr_factor;
+%                frame_show[s_height/4..s_height/4+s_height/2-1,s_width/2..s_width-1,:] = imresize(frame_dequant,0.5,"nearest")
+%            else
+%                if(cb_show_brightness_mask.value)
+%                    frame_show[:,0..xloc,0]=frame_bright_mask[:,0..xloc]
+%                    frame_show[:,0..xloc,1]=frame_bright_mask[:,0..xloc]
+%                    frame_show[:,0..xloc,2]=frame_bright_mask[:,0..xloc]
+%                    %Add text
+%                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = mask_text_img[:,:,0..2]/1024;
+%                else
+%                    frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:]/255)
+%                    %frame_show[:,0..xloc,:]=frame_expanded[:,0..xloc,:]
+%                    %Add text
+%                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = left_text_img[:,:,0..2]/1024;
+%                endif
+%                
+%                %Show processed
+%                frame_show[:,xloc..s_width-1,:]=frame_dequant[:,xloc..s_width-1,:]
+%                %Add text
+%                frame_show[x_pos_tit..x_pos_tit+43,s_width-320..s_width-20+277,:] = right_text_img[:,:,0..2]/1024;    
+%                %Black vertical line
+%                frame_show[:,xloc..xloc+1,:]=0
+%            endif
+%        endif            
 
-    
-        h = hdr_imshow(frame_show,[0,1.0])
+   
+       
+       
 
        %LDR       
        %im_ldr=(frame_show.^0.29)
@@ -662,29 +664,34 @@ function [] = main()
 %       png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 %       imwrite(png_path, im_ldr)
 %     
-       
+       img_sim2 = rgb2sim2(6000*frame_dequant,1)
         % Save in PNG      
         if(cb_record.value) 
 %             sim2_img = rgb2sim2(frame_show*max_value,1)
-%             png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+             png_path = sprintf(strcat(png_out_folder,"out_%05d_%08d.png"),position.value,png_frame_counter); 
 %             imwrite(png_path, sim2_img)
              
-            pause(500)
-            y : cube[uint8]= h.rasterize()
-            png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+%            pause(500)
+%            y : cube[uint8]= h.rasterize()
+%            png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+%
+%            frame_pngsave[floor((1080-s_height)/2)..s_height+floor((1080-s_height)/2)-10,0..size(y,1)-1,:] = y[5..s_height-5,0..size(y,1)-1,:]
+%            frame_pngsave[:,s_width-26..s_width-1,:]=0;
 
-            frame_pngsave[floor((1080-s_height)/2)..s_height+floor((1080-s_height)/2)-10,0..size(y,1)-1,:] = y[5..s_height-5,0..size(y,1)-1,:]
-            frame_pngsave[:,s_width-26..s_width-1,:]=0;
-
-            imwrite(png_path, frame_pngsave[size(frame_pngsave,0)-1..-1..0,:,:]) %Flip image saved
+            imwrite(png_path, img_sim2) %Flip image saved
         endif
 
         %toc()
         %Update position slider
-        position.value = floor(stream.pts*stream.avg_frame_rate)
-        %png_frame_counter=png_frame_counter+1
-        png_frame_counter= position.value
-        pause(0)
+        position.value = int(stream.pts*stream.avg_frame_rate)
+        png_frame_counter=png_frame_counter+1
+        %png_frame_counter= position.value
+        
+         
+    
+    h = imshow(img_sim2,[0,255])
+        
+        %pause(0)
     until !hold("on")
 end
 
