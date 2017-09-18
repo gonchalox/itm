@@ -8,6 +8,7 @@ import "fastguidedfilter.q"
 import "inttypes.q"
 import "system.q"
 import "colortransform.q"
+import "../../Quasar_EXR_library/src/EXR_lib/bin/Release/EXR_lib.dll"
 import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
 import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
 import "C:\Users\ipi\Documents\gluzardo\experiments\itmo_curve\adaptive_itmo.q"
@@ -185,7 +186,9 @@ end
 
 function [] = main()
     %Video to process
-    video_file_sdr="H:\HDR_KORTFILM_PQ1K_2020_.mov"
+    input_type=1;
+    video_file_sdr="H:/HDR_KORTFILM_PQ1K_2020_.mov"
+    %video_file_sdr="H:/in/HDR_KORTFILM_PQ1K_2020_000000.exr"
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")
@@ -224,19 +227,19 @@ function [] = main()
     mid_out_dark = 0.08 %dark or dim
     mid_out_bright = 0.21
     %Values for maximum brigthness 
-    max_bright_normal = 0.7
+    max_bright_normal = 0.06
     max_bright_dark = 0.4
     max_bright_bright = 0.9
     
     %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
     % Default params
     eo_params = object()
-    eo_params.a:scalar= 1.4% Contrast
+    eo_params.a:scalar= 2.84% Contrast
     eo_params.d:scalar = 0.96 % Shoulder
-    eo_params.midIn:scalar=0.18^2.2
-    eo_params.midOut:scalar= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
-    eo_params.hdrMax:scalar=max_bright_dark
-    eo_params.s:scalar=1.1
+    eo_params.midIn:scalar=0.5
+    eo_params.midOut:scalar= 0.23 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    eo_params.hdrMax:scalar=1.0
+    eo_params.s:scalar=1.5
     eo_params.peak_luminance:scalar=peak_luminance_sim2
     updateBC(eo_params);
     
@@ -271,11 +274,16 @@ function [] = main()
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     %Opem stream
-    stream = vidopen(video_file_sdr) % Opens the specified video file for playing
-
-    %Variables
-    s_width=stream.frame_width
-    s_height=stream.frame_height
+    if(input_type==0)
+        stream = exrread(video_file_sdr).data
+        [s_height, s_width] = size(stream,0..1)
+    else
+        stream = vidopen(video_file_sdr) % Opens the specified video file for playing
+        %Variables
+        s_width=stream.frame_width
+        s_height=stream.frame_height
+    endif
+    
     
     frame = cube(s_height,s_width,3)
     edr = cube(s_height,s_width,3)
@@ -298,7 +306,9 @@ function [] = main()
     looping = false
 
     % Sets the frame rate for the imshow function
-    sync_framerate(stream.avg_frame_rate) 
+    if(input_type==1)
+        sync_framerate(stream.avg_frame_rate) 
+    endif    
     
     % GUI
     frm.add_heading("General parameters")
@@ -306,7 +316,7 @@ function [] = main()
     cb_side_by_side = frm.add_checkbox("Compare", false)
     %cb_sdr_vs_hdr = frm.add_checkbox("Compare HDR", false)
     cb_no_line = frm.add_checkbox("No line", true)
-    cb_record = frm.add_checkbox("Recording", true )
+    cb_record = frm.add_checkbox("Recording", false )
     
     frm.add_heading("Denoising parameters (LDR non-linear space)")
     cb_denoise = frm.add_checkbox("Denoising: ", false)
@@ -425,20 +435,27 @@ function [] = main()
             endif
         endif
         % Reads until there is no frame left. 
-        if vidstate.is_playing 
-            %if (!vidreadframe(stream) || !vidreadframe(stream_hdr))
-            if (!vidreadframe(stream))
-                if looping
-                    % Jump back to the first frame
-                    vidseek(stream, 0)
-                else
-                    break
+        if(input_type==1)
+            if vidstate.is_playing 
+                %if (!vidreadframe(stream) || !vidreadframe(stream_hdr))
+                if (!vidreadframe(stream))
+                    if looping
+                        % Jump back to the first frame
+                        vidseek(stream, 0)
+                    else
+                        break
+                    endif
                 endif
             endif
+            frame = float(stream.rgb_data)/(2^16-1) %Values betwen 0 and 255 not linear
+        else
+            frame = stream
         endif
         
-        %Read frames
-        frame = float(stream.rgb_data)/(2^16-1) %Values betwen 0 and 255 not linear
+        %Converto to correct color space
+        frame = Rec2020TosRGB(frame)
+        clamp_values(frame,0,1)
+        frame = frame*255
                 
         %Denoising using fast joint bilateral filter (guided filter) 
         if(cb_denoise.value)
@@ -451,14 +468,14 @@ function [] = main()
             frame_denoised=frame
         endif    
         
-        %Normalized
-        frame_denoised = frame_denoised %Normalized between a and 1
         
+        frame_denoised = frame_denoised/255 %Normalized between a and 1
         
+        %Linearize ???
+        %frame_denoised=linearize(frame_denoised)
         
-
         %Get frame luminance
-        Ld = getLuminanceImage(frame_denoised) %Not linearized
+        Ld = getLuminanceImage(frame_denoised) 
         log_luma_norm = 0.5*log_luma_norm + 0.5*getLogLumaNorm(Ld)
         slider_LogLumaNorm.value = log_luma_norm
         
@@ -467,28 +484,28 @@ function [] = main()
                                                                                                 
         %Calc LUT for POCS and iTMO, this lut includes linearize procedure
         lut=expand(val_in,eo_params)% getLut(val_in,eo_params) %%--->> this step includes linearization
-        g = params_display.plot(delinearize(val_in),lut);
+        g = params_display.plot(val_in,lut);
         g.title = "iTMO Curve"
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %Update mid out and maximum brightness
-        reach_midOut = 0;
-        reach_bright = 0;
-        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
-            reach_midOut = mid_out_dark;
-            reach_bright = max_bright_dark;
-            bright_status.text = "Dark"
-        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
-            reach_midOut = mid_out_normal;
-            reach_bright = max_bright_normal;
-            bright_status.text = "Normal"
-        else %Bright > 0.8
-            reach_midOut = mid_out_bright;
-            reach_bright = max_bright_bright;
-            bright_status.text = "Bright"
-        endif
-        
-        
+%        reach_midOut = 0;
+%        reach_bright = 0;
+%        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
+%            reach_midOut = mid_out_dark;
+%            reach_bright = max_bright_dark;
+%            bright_status.text = "Dark"
+%        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
+%            reach_midOut = mid_out_normal;
+%            reach_bright = max_bright_normal;
+%            bright_status.text = "Normal"
+%        else %Bright > 0.8
+%            reach_midOut = mid_out_bright;
+%            reach_bright = max_bright_bright;
+%            bright_status.text = "Bright"
+%        endif
+%        
+%        
         %% Update reach luminance
 %        if(reach_bright > eo_params.hdrMax) %Up luminance
 %            eo_params.hdrMax = eo_params.hdrMax + l_high*abs(reach_bright-eo_params.hdrMax)
@@ -513,7 +530,7 @@ function [] = main()
         
               
         %Expand the dynamic range and get L and H frames
-        Lw = expand(Ld,eo_params)%  expandsPOCS(Ld,frame_l,frame_u,lut)
+        Lw = expand(Ld,eo_params)*1000%  expandsPOCS(Ld,frame_l,frame_u,lut)
              
         %POCS
         frame_dequant = copy(Lw)
@@ -529,7 +546,7 @@ function [] = main()
         endif
         
         %Create the HDR inverse tone mapped image - EDR     
-        edr =   changeLuminance(linearize(frame_denoised),Ld,frame_dequant*peak_luminance_sim2,eo_params.s) %frame_dequant*peak_luminance_sim2%
+        edr =  changeLuminanceSatComp(frame_denoised,Ld,Lw,eo_params.s) %frame_dequant*peak_luminance_sim2%
 
         %Create show frame
         frame_show=zeros(size(frame_show));
@@ -565,7 +582,7 @@ function [] = main()
         endif            
 
         %Show the frame  
-        h = hdr_imshow(frame_show,[0,1000])
+        h = hdr_imshow(frame_show,[0,6000])
 
        %LDR       
 %       im_ldr=(frame_show.^0.29)
@@ -589,7 +606,7 @@ function [] = main()
         endif
 
         %Update position slider
-        position.value = stream.pts*stream.avg_frame_rate
+        %position.value = stream.pts*stream.avg_frame_rate
         png_frame_counter=png_frame_counter+1
         pause(0)
     until !hold("on")
