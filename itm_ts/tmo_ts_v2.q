@@ -211,7 +211,7 @@ function [] = main()
 %    video_file="F:/movie_trailers/The Angry Birds Movie (2016) DVDRip LAT-ZeiZ.mkv"
 %    video_file="F:/movie_trailers/thewheel-got-acard_h1080p.mov"
 
-video_file="F:/movie_trailers/sing-trailer-6_h1080p.mov"
+video_file="H:/ldr_plus.mov"
 
 %    jef = imread("C:\Users\ipi\Desktop\ishihara_10.jpg")/255
 %    h = hdr_imshow((jef.^(2.2))/10,[0,1])

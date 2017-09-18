@@ -111,7 +111,7 @@ function [y:vec] = getLut(x:vec,params:object)
     end
     y=uninit(size(x)) 
     %Linearize the image
-    %x=linearize(x)
+    x=linearize(x)
     parallel_do(size(x),x,y,params.a,params.b,params.c,params.d,params.peak_luminance,getLut_kernel)
 end
 
@@ -254,7 +254,7 @@ end
 
 function [] = main()
     %Video to process
-    video_file_sdr="H:\H2DR\movie_trailers\tears_of_steel_720p.mov"
+    video_file_sdr="H:\ldr_plus.mov"
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")
@@ -398,7 +398,7 @@ function [] = main()
     slider_max_lum = frm_cl.add_slider("Maximun luminance:",eo_params.peak_luminance,0.1,1)
     slider_a = frm.add_slider("Contrast(a):",eo_params.a,0.0,10.0)
     slider_d = frm.add_slider("Shoulder(d):",eo_params.d,0.0,10.0)
-    %slider_midIn = frm.add_slider("Mid In :",tmo_params.midIn,0.0,max_value)
+    slider_midIn = frm.add_slider("Mid In :",eo_params.midIn,0.0,1)
     slider_midOut =  frm_cl.add_slider("Mid Out (*) :",eo_params.midOut,0.0,1)
     
     frm.add_heading("Video Player")
@@ -461,8 +461,8 @@ function [] = main()
     position.onchange.add(() -> vidstate.allow_seeking ? vidseek(stream, position.value/stream.avg_frame_rate) : [])
   
     %Using mid-level mapping to adjust brightness pre-tonemappingkeeps contrast and saturation consistent 
-%   slider_midIn.onchange.add(()-> (tmo_params.midIn = slider_midIn.value;
-%                                updateBC(tmo_params)))          
+    slider_midIn.onchange.add(()-> (eo_params.midIn = slider_midIn.value;
+                                updateBC(eo_params)))          
 
     slider_midOut.onchange.add(()-> (eo_params.midOut = slider_midOut.value;
                                 updateBC(eo_params)))                        
@@ -500,7 +500,9 @@ function [] = main()
         endif
         
         %Read frames
-        frame = float(stream.rgb_data)
+        frame = floor((float(stream.rgb_data)/(2^16-1))*255) %YCbCr
+                
+        %/(2^8+1)
         
         %Denoising using fast joint bilateral filter (guided filter) 
         if(cb_denoise.value)
@@ -514,7 +516,8 @@ function [] = main()
         endif    
         
         %Normalized
-        frame_denoised = frame_denoised/255.0 %Max value
+        frame_denoised = frame_denoised/255.0 %Normalized
+        frame_denoised = linearize(frame_denoised)
 
         %Get frame luminance
         frame_luma = getLuminanceImage(frame_denoised) %Not linearized
@@ -530,7 +533,7 @@ function [] = main()
         g.title = "iTMO Curve"
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-         Update mid out and maximum brightness
+        %Update mid out and maximum brightness
         reach_midOut = 0;
         reach_bright = 0;
         if(slider_LogLumaNorm.value < th_dark_norm) %Dark
@@ -546,28 +549,28 @@ function [] = main()
             reach_bright = max_bright_bright;
             bright_status.text = "Bright"
         endif
-        
-        % Update reach luminance
-        if(reach_bright > eo_params.peak_luminance) %Up luminance
-            eo_params.peak_luminance = eo_params.peak_luminance + l_high*abs(reach_bright-eo_params.peak_luminance)
-            eb_params.boost_luminance = 1-eo_params.peak_luminance
-            slider_max_lum.value = eo_params.peak_luminance
-        elseif(reach_bright < eo_params.peak_luminance)%Down luminance
-            eo_params.peak_luminance = eo_params.peak_luminance - l_low*abs(reach_bright-eo_params.peak_luminance)
-            eb_params.boost_luminance = 1-eo_params.peak_luminance
-            slider_max_lum.value = eo_params.peak_luminance
-        endif
-        
-        %Update mid_out
-        if(reach_midOut > eo_params.midOut) %Up luminance
-            eo_params.midOut = eo_params.midOut + l_high*abs(reach_midOut-eo_params.midOut)
-            slider_midOut.value = eo_params.midOut
-            updateBC(eo_params)
-        elseif(reach_midOut < eo_params.midOut)%Down luminancesnip
-            eo_params.midOut = eo_params.midOut - l_low*abs(reach_midOut-eo_params.midOut)
-            slider_midOut.value = eo_params.midOut
-            updateBC(eo_params)
-        endif
+%        
+%        % Update reach luminance
+%        if(reach_bright > eo_params.peak_luminance) %Up luminance
+%            eo_params.peak_luminance = eo_params.peak_luminance + l_high*abs(reach_bright-eo_params.peak_luminance)
+%            eb_params.boost_luminance = 1-eo_params.peak_luminance
+%            slider_max_lum.value = eo_params.peak_luminance
+%        elseif(reach_bright < eo_params.peak_luminance)%Down luminance
+%            eo_params.peak_luminance = eo_params.peak_luminance - l_low*abs(reach_bright-eo_params.peak_luminance)
+%            eb_params.boost_luminance = 1-eo_params.peak_luminance
+%            slider_max_lum.value = eo_params.peak_luminance
+%        endif
+%        
+%        %Update mid_out
+%        if(reach_midOut > eo_params.midOut) %Up luminance
+%            eo_params.midOut = eo_params.midOut + l_high*abs(reach_midOut-eo_params.midOut)
+%            slider_midOut.value = eo_params.midOut
+%            updateBC(eo_params)
+%        elseif(reach_midOut < eo_params.midOut)%Down luminancesnip
+%            eo_params.midOut = eo_params.midOut - l_low*abs(reach_midOut-eo_params.midOut)
+%            slider_midOut.value = eo_params.midOut
+%            updateBC(eo_params)
+%        endif
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
@@ -623,11 +626,11 @@ function [] = main()
         endif            
 
     
-        %h = hdr_imshow(frame_show,[0,1.0])
+        h = hdr_imshow(frame_show,[0,1.0])
 
        %LDR       
-       im_ldr=(frame_show.^0.29)
-       h=imshow(im_ldr,[0,1])
+       %im_ldr=(frame_show.^0.29)
+       %h=imshow(im_ldr,[0,1])
 %       png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 %       imwrite(png_path, im_ldr)
 %     

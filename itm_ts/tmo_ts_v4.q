@@ -250,7 +250,7 @@ function [] = main()
 %    video_file_sdr = "F:/movie_trailers/Mad_Max_Fury_Road_2015_Trailer_F4_5.1-1080p-HDTN.mp4"
 
 %video_file_sdr = "C:/Users/ipi/Downloads/A002C001_160611_R1NI.mxf"
-video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
+video_file_sdr = "H:/ldr_plus.mov"
 %    video_file_sdr="F:/movie_trailers/Interstellar_2014_trailer_2_5.1-1080p-HDTN.mp4"
 %    video_file_sdr="F:/movie_trailers/revenant-tlr1_h1080p.mov"
 %    video_file_sdr="F:/movie_trailers/rogueone-tsr1_h1080p.mov"
@@ -309,7 +309,7 @@ video_file_sdr = "F:/movie_trailers/dawnoftheplanetoftheapes-tlr2_h1080p.mov"
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%
     pocs_params = object();
-    pocs_params.r_pocs=6  %R?
+    pocs_params.r_pocs=3  %R?
     pocs_params.it=6
     pocs_params.steps=48
     

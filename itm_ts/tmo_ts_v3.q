@@ -233,7 +233,7 @@ function [] = main()
 %    video_file_sdr="F:/movie_trailers/beauty-and-the-beast-trailer-2_h1080p.mov"
     
 %    video_file_sdr="F:/movie_trailers/The Angry Birds Movie (2016) DVDRip LAT-ZeiZ.mkv"
-    video_file_sdr="F:/movie_trailers/spiderman-homecoming-trailer-1_h1080p.mov"
+    video_file_sdr="H:/ldr_plus.mov"
 
 
 %    jef = imread("C:\Users\ipi\Desktop\ishihara_10.jpg")/255
@@ -456,7 +456,7 @@ function [] = main()
         endif
         
         %Read frames
-        frame = float(stream.rgb_data)
+        frame = float(stream.rgb_data)/(2^8+1) 
         
         %FIX SATURATIONS
 %        frame = rgb2hsv(frame)
