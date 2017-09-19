@@ -242,7 +242,7 @@ function [] = main()
     % Default params
     eo_params = object()
     eo_params.a:scalar= 2.28% Contrast
-    eo_params.d:scalar = 0.65 % Shoulder
+    eo_params.d:scalar = 0.96 % Shoulder
     eo_params.midIn:scalar=0.5
     eo_params.midOut:scalar= 0.33 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
     eo_params.hdrMax:scalar=1.0
@@ -306,8 +306,8 @@ function [] = main()
     frame_v_buff = mat(s_height,s_width)
     frame_dequant = mat(s_height,s_width)
     
-    frame_pngsave = zeros(png_out_h,png_out_w,3)
-    
+    frame_pngsave : cube[uint8]= cube[uint8](s_height,s_width,3)
+        
     frame_show = cube(s_height,s_width,3)
 
     sz = [s_height,s_width,3]   
@@ -324,7 +324,7 @@ function [] = main()
     cb_side_by_side = frm.add_checkbox("Compare", false)
     %cb_sdr_vs_hdr = frm.add_checkbox("Compare HDR", false)
     cb_no_line = frm.add_checkbox("No line", true)
-    cb_record = frm.add_checkbox("Recording", false )
+    cb_record = frm.add_checkbox("Recording", true )
     
     frm.add_heading("Denoising parameters (LDR non-linear space)")
     cb_denoise = frm.add_checkbox("Denoising: ", false)
@@ -604,7 +604,8 @@ function [] = main()
 
         %Show the frame  
         h = hdr_imshow(frame_show,[0,6000])
-
+        %sim2_img = rgb2sim2(frame_show,0)
+        %imshow(sim2_img,[0,255])
        %LDR       
 %       im_ldr=(frame_show.^0.29)
 %       h=imshow(im_ldr,[0,1])
@@ -612,15 +613,17 @@ function [] = main()
 %       imwrite(png_path, im_ldr)
 %     
        
-         Save in PNG      
+        %Save in PNG      
         if(cb_record.value) 
-%             sim2_img = rgb2sim2(frame_show*max_value,1)
-%             png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
-%             imwrite(png_path, sim2_img)
-             
             pause(500)
-            y : cube[uint8]= h.rasterize()
             png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+
+%            sim2_img = rgb2sim2(frame_show*max_value,1)
+%            png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+%            imwrite(png_path, sim2_img)
+
+            y : cube[uint8]= h.rasterize()
+            
             frame_pngsave[floor((1080-s_height)/2)..s_height+floor((1080-s_height)/2)-10,0..size(y,1)-1,:] = y[5..s_height-5,0..size(y,1)-1,:]
             frame_pngsave[:,s_width-26..s_width-1,:]=0;
             imwrite(png_path, frame_pngsave[size(frame_pngsave,0)-1..-1..0,:,:]) %Flip image saved
