@@ -186,9 +186,16 @@ end
 
 function [] = main()
     %Video to process
-    input_type=1;
-    video_file_sdr="H:/HDR_KORTFILM_PQ1K_2020_.mov"
-    %video_file_sdr="H:/in/HDR_KORTFILM_PQ1K_2020_000000.exr"
+    input_type=0  %0-EXR images  1-video 
+    %video_file_sdr="H:/HDR_KORTFILM_PQ1K_2020_.mov"
+    video_file_sdr="H:\PQ_GRADED_HLGODT\EXR\HDR_KORTFILM_PQGRADE_HLGODT_NOADJ_2020_%06d.exr"
+    % For image input
+    image_frames = object()
+    image_frames.start_frame = 0
+    image_frames.current_frame = image_frames.start_frame
+    image_frames.end_frame = 12266
+    %%%%%%
+    
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")
@@ -234,12 +241,12 @@ function [] = main()
     %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
     % Default params
     eo_params = object()
-    eo_params.a:scalar= 2.84% Contrast
-    eo_params.d:scalar = 0.96 % Shoulder
+    eo_params.a:scalar= 2.28% Contrast
+    eo_params.d:scalar = 0.65 % Shoulder
     eo_params.midIn:scalar=0.5
-    eo_params.midOut:scalar= 0.23 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    eo_params.midOut:scalar= 0.33 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
     eo_params.hdrMax:scalar=1.0
-    eo_params.s:scalar=1.5
+    eo_params.s:scalar=1.3
     eo_params.peak_luminance:scalar=peak_luminance_sim2
     updateBC(eo_params);
     
@@ -275,11 +282,12 @@ function [] = main()
     
     %Opem stream
     if(input_type==0)
-        stream = exrread(video_file_sdr).data
-        [s_height, s_width] = size(stream,0..1)
+        stream = video_file_sdr
+        %Asume that the image input are 1920x1080 UHD
+        s_width=1920%stream.frame_width
+        s_height=1080%stream.frame_height
     else
         stream = vidopen(video_file_sdr) % Opens the specified video file for playing
-        %Variables
         s_width=stream.frame_width
         s_height=stream.frame_height
     endif
@@ -354,7 +362,11 @@ function [] = main()
     button_play.icon = imread("Media/control_play_blue.png")
     button_fullrewind=frm.add_button("Full rewind")
     button_fullrewind.icon = imread("Media/control_start_blue.png")
-    position = frm.add_slider("Position",0,0,floor(stream.duration_sec*stream.avg_frame_rate))
+    if(input_type==0)
+        position = frm.add_slider("Position",image_frames.current_frame,0,image_frames.end_frame)
+    else
+        position = frm.add_slider("Position",0,0,floor(stream.duration_sec*stream.avg_frame_rate))
+    endif
     params_display = frm.add_display()
     
     %Events
@@ -400,10 +412,15 @@ function [] = main()
     button_stop.onclick.add(() -> vidstate.is_playing = false)
     
     button_play.onclick.add(() -> vidstate.is_playing = true)
+    if(input_type==0)
+        button_fullrewind.onclick.add(() -> (image_frames.current_frame = image_frames.start_frame; vidstate.show_next_frame = true))    
+        position.onchange.add(() ->  (image_frames.current_frame= floor(position.value); position.value = floor(position.value)))  
+    else
+        button_fullrewind.onclick.add(() -> (vidseek(stream, 0); vidstate.show_next_frame = true))
+        position.onchange.add(() -> vidstate.allow_seeking ? vidseek(stream, position.value/stream.avg_frame_rate) : [])    
+    endif
     
-    button_fullrewind.onclick.add(() -> (vidseek(stream, 0); vidstate.show_next_frame = true))    
     
-    position.onchange.add(() -> vidstate.allow_seeking ? vidseek(stream, position.value/stream.avg_frame_rate) : [])
   
     %Using mid-level mapping to adjust brightness pre-tonemappingkeeps contrast and saturation consistent 
     slider_midIn.onchange.add(()-> (eo_params.midIn = slider_midIn.value;
@@ -449,7 +466,11 @@ function [] = main()
             endif
             frame = float(stream.rgb_data)/(2^16-1) %Values betwen 0 and 255 not linear
         else
-            frame = stream
+            video_file = sprintf(video_file_sdr,image_frames.current_frame)
+            frame = exrread(video_file).data
+            if vidstate.is_playing
+                image_frames.current_frame = image_frames.current_frame + 1
+            endif    
         endif
         
         %Converto to correct color space
