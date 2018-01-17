@@ -324,7 +324,7 @@ function [] = main()
     cb_side_by_side = frm.add_checkbox("Compare", false)
     %cb_sdr_vs_hdr = frm.add_checkbox("Compare HDR", false)
     cb_no_line = frm.add_checkbox("No line", true)
-    cb_record = frm.add_checkbox("Recording", true )
+    cb_record = frm.add_checkbox("Recording", false )
     
     frm.add_heading("Denoising parameters (LDR non-linear space)")
     cb_denoise = frm.add_checkbox("Denoising: ", false)
@@ -567,7 +567,7 @@ function [] = main()
         endif
         
         %Create the HDR inverse tone mapped image - EDR     
-        edr =  changeLuminanceSatComp(frame_denoised,Ld,Lw,eo_params.s) %frame_dequant*peak_luminance_sim2%
+        edr =  changeLuminance(frame_denoised,Ld,Lw,eo_params.s) %frame_dequant*peak_luminance_sim2%
 
         %Create show frame
         frame_show=zeros(size(frame_show));
@@ -608,7 +608,7 @@ function [] = main()
         %imshow(sim2_img,[0,255])
        %LDR       
 %       im_ldr=(frame_show.^0.29)
-%       h=imshow(im_ldr,[0,1])
+%       h=imshow(frame_show,[0,6000])
 %       png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 %       imwrite(png_path, im_ldr)
 %     
@@ -630,7 +630,11 @@ function [] = main()
         endif
 
         %Update position slider
-        %position.value = stream.pts*stream.avg_frame_rate
+        if(input_type==0)
+            position.value = image_frames.current_frame
+        else
+            position.value = stream.pts*stream.avg_frame_rate
+        endif
         png_frame_counter=png_frame_counter+1
         pause(0)
     until !hold("on")

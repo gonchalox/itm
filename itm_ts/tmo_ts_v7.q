@@ -13,8 +13,8 @@ import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
 import "C:\Users\ipi\Documents\gluzardo\experiments\itmo_curve\adaptive_itmo.q"
 %Linearize
 function y = linearize(x)
-    y = PQ_EOTF(x)
-    %y=sRGB_decode(x)
+    %y = PQ_EOTF(x)
+    y=sRGB_decode(x)
 end
 
 %Delinearize
@@ -26,7 +26,7 @@ end
 %Input the 0..255 vector and the params for the expand operator
 function [y:vec] = getLut(x:vec,params:object)
     %Linearize the image considering that the input is srgb encoded
-    %x=linearize(x)
+    x=linearize(x)
     y=expand(x,params);
 end
 
@@ -43,7 +43,6 @@ function [y:vec3] = __device__ clamp_values(x:vec3'unchecked,l:scalar,h:scalar)
         endif  
     end
 end
-
 
 % 1D Horizontal filter kernel
 function [] = __kernel__ pocs_horizontal_run(y : cube'unchecked, _
@@ -115,7 +114,8 @@ function [y:mat]=get_bright_mask(x:cube'unchecked,luma:mat'unchecked,params:obje
     if(params.gf)
         y = fastguidedfilter(luma,y,200,10^-2,4);
     endif    
-    y = y.^params.f
+    %y = y.^params.f
+    y=PQ_EOTF(y)
     y = (y>0).*clamp(y/max(y),1)
 
 end
@@ -185,7 +185,7 @@ end
 
 function [] = main()
     %Video to process
-    video_file_sdr="H:\HDR_KORTFILM_PQ1K_2020_.mov"
+    video_file_sdr="H:\demo\compare\ldr_09.mp4"
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")
@@ -264,7 +264,6 @@ function [] = main()
     frm_cl = form("Dark, Normal, Bright... scene classification")  
     frm_cl.width = 500
     frm_cl.height = 150
-    slider_brightness_th_luma = frm.add_slider("Luminance(th1):",eb_params.th_luma,0.1,1.1)
     frm_cl.center()
     slider_LogLumaNorm = frm_cl.add_slider("Log Luma Normalized",0,0,1.0)
     bright_status=frm_cl.add_button("Dark")
@@ -438,7 +437,7 @@ function [] = main()
         endif
         
         %Read frames
-        frame = floor((float(stream.rgb_data)/(2^16-1))*255) %Values betwen 0 and 255 not linear
+        frame = float(stream.rgb_data) %Values betwen 0 and 255 not linear
                 
         %Denoising using fast joint bilateral filter (guided filter) 
         if(cb_denoise.value)
@@ -465,7 +464,7 @@ function [] = main()
                                                                                                 
         %Calc LUT for POCS and iTMO, this lut includes linearize procedure
         lut=getLut(val_in,eo_params) %%--->> this step includes linearization
-        g = params_display.plot(delinearize(val_in),lut);
+        g = params_display.plot(val_in,delinearize(lut));
         g.title = "iTMO Curve"
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -527,7 +526,7 @@ function [] = main()
         endif
         
         %Create the HDR inverse tone mapped image - EDR     
-        edr =   changeLuminance(linearize(frame_denoised),Ld,frame_dequant*peak_luminance_sim2,eo_params.s) %frame_dequant*peak_luminance_sim2%
+        edr =  changeLuminance(linearize(frame_denoised),Ld,frame_dequant*peak_luminance_sim2,eo_params.s) %frame_dequant*peak_luminance_sim2%
 
         %Create show frame
         frame_show=zeros(size(frame_show));

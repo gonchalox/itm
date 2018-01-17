@@ -71,7 +71,7 @@ end
 
 
 function y = linearize(x)
-    y=sRGB_decode(x./255.0)
+    y=sRGB_decode(x)
 end
 
 function y = delinearize(x)
@@ -250,7 +250,7 @@ function [] = main()
 %    video_file_sdr = "F:/movie_trailers/Mad_Max_Fury_Road_2015_Trailer_F4_5.1-1080p-HDTN.mp4"
 
 %video_file_sdr = "C:/Users/ipi/Downloads/A002C001_160611_R1NI.mxf"
-video_file_sdr = "H:/ldr_plus.mov"
+video_file_sdr = "D:\ldr_cutoff_01.mov"
 %    video_file_sdr="F:/movie_trailers/Interstellar_2014_trailer_2_5.1-1080p-HDTN.mp4"
 %    video_file_sdr="F:/movie_trailers/revenant-tlr1_h1080p.mov"
 %    video_file_sdr="F:/movie_trailers/rogueone-tsr1_h1080p.mov"
@@ -270,12 +270,12 @@ video_file_sdr = "H:/ldr_plus.mov"
     general_params = object()
     target_bits_per_color = 16.0 %Number of bits
     max_value = 2^target_bits_per_color-1
-    sdr_factor = 2.5; % 600 nits
+    sdr_factor = 6; % 1000 nits
           
     %%%%%%%%%%%%%%%% Denoising PARAMS %%%%%%%%%%%%%%%
     gf_params = object()
     gf_params.r=16
-    gf_params.epsf=1.4%1.12
+    gf_params.epsf=1.12%1.12
     gf_params.eps=(gf_params.epsf)^4;
     
     %%%%%%%%%%% Automatic  dark, normal, bright classification %%%%%%%%%
@@ -299,25 +299,25 @@ video_file_sdr = "H:/ldr_plus.mov"
     %%%%%%%%%%%%  Color graded PARAMS %%%%%%%%%%%%%%%%
     % Derfault params
     tmo_params = object()
-    tmo_params.a:scalar= 1.22% 1%1.22 % Contrast
-    tmo_params.d:scalar = 2.82 % 0.995%1.77  % Shoulder
-    tmo_params.midIn:scalar=(0.5)*(max_value);
-    tmo_params.midOut:scalar= mid_out_dark %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    tmo_params.a:scalar= 1.27% 1%1.22 % Contrast
+    tmo_params.d:scalar = 0.98 % 0.995%1.77  % Shoulder
+    tmo_params.midIn:scalar=(0.4)*(max_value);
+    tmo_params.midOut:scalar= 0.196%mid_out_dark %0.063 %This value could be change dynamically .. TODO 0.18 HDR
     tmo_params.hdrMax:scalar=max_value %HDR Max value default (in image)
-    tmo_params.peak_luminance:scalar=max_bright_dark    %0.8  %0.67 %Peak luminance in TMO
+    tmo_params.peak_luminance:scalar=0.715    %0.8  %0.67 %Peak luminance in TMO
     updateBC(tmo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%
     pocs_params = object();
-    pocs_params.r_pocs=3  %R?
+    pocs_params.r_pocs=11  %R?
     pocs_params.it=6
-    pocs_params.steps=48
+    pocs_params.steps=10
     
     %%%%%%%%%%% ENHANCE BRIGHT %%%%%%%%%%%
     eb_params = object()
-    eb_params.th_luma=linearize(222)  %Luminance Didyk
+    eb_params.th_luma=linearize(222/255)  %Luminance Didyk
     eb_params.th_sat=0.95%linearize(230)  %Saturation LDR2HDR
-    eb_params.f=2.0; 
+    eb_params.f=2.5; 
     eb_params.gf=true; 
     eb_params.boost_luminance = 1-tmo_params.peak_luminance;
     eb_params.method = 0; %0-Adding the mask   %1-Multiply the mask
@@ -495,7 +495,7 @@ video_file_sdr = "H:/ldr_plus.mov"
         endif
         
         %Read frames
-        frame = float(stream.rgb_data)
+        frame = (float(stream.rgb_data)/(2^16-1))*(2^8-1)
         
         %Denoising using fast joint bilateral filter (guided filter) 
         if(cb_denoise.value)
@@ -509,7 +509,7 @@ video_file_sdr = "H:/ldr_plus.mov"
         endif    
         
         %Linearize frame (normalized)
-        frame_denoised = linearize(frame_denoised) %Max value
+        frame_denoised = linearize(frame_denoised/255) %Max value
 
         %Get frame luminance
         frame_luma = getLuminanceImage(frame_denoised)
@@ -592,8 +592,12 @@ video_file_sdr = "H:/ldr_plus.mov"
         else
             if(cb_side_by_side.value)
                 %Must be 540x960 each image
-                frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame),0.5,"nearest")/sdr_factor;
-                frame_show[s_height/4..s_height/4+s_height/2-1,s_width/2..s_width-1,:] = imresize(frame_dequant,0.5,"nearest")
+                frame_show = zeros(s_height,s_width,3)
+                frame_show[:,0..959,:]=linearize(frame[:,480..1439,:]/255)
+                frame_show[:,960..1919,:]=frame_dequant[:,480..1439,:]
+                     
+                %frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame/255),0.5,"nearest")/sdr_factor
+                %frame_show[s_height/4..s_height/4+s_height/2-1,s_width/2..s_width-1,:] = imresize(frame_dequant,0.5,"nearest")
 %            elseif(cb_sdr_vs_hdr.value)    
 %                frame_show=zeros(size(frame_show)); 
 %                frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame_hdr),0.5,"nearest")/max_value;
@@ -604,7 +608,7 @@ video_file_sdr = "H:/ldr_plus.mov"
                     frame_show[:,0..xloc,1]=frame_bright_mask[:,0..xloc]
                     frame_show[:,0..xloc,2]=frame_bright_mask[:,0..xloc]
                 else
-                    frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:])/sdr_factor
+                    frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:]/255)/sdr_factor
                 endif
                 
                 %Show processed
