@@ -254,7 +254,7 @@ end
 
 function [] = main()
     %Video to process
-    video_file_sdr="H:\ldr_plus.mov"
+    video_file_sdr="H:/trailers/madmax.mp4"
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")

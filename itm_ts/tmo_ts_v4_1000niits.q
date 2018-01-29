@@ -8,6 +8,7 @@ import "fastguidedfilter.q"
 import "inttypes.q"
 import "system.q"
 import "colortransform.q"
+import "../../Quasar_EXR_library/src/EXR_lib/bin/Release/EXR_lib.dll"
 import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
 import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
 
@@ -250,7 +251,7 @@ function [] = main()
 %    video_file_sdr = "F:/movie_trailers/Mad_Max_Fury_Road_2015_Trailer_F4_5.1-1080p-HDTN.mp4"
 
 %video_file_sdr = "C:/Users/ipi/Downloads/A002C001_160611_R1NI.mxf"
-video_file_sdr = "H:/trailers/madmax.mp4"
+video_file_sdr = "D:\ldr_cutoff_02.mov"
 %    video_file_sdr="F:/movie_trailers/Interstellar_2014_trailer_2_5.1-1080p-HDTN.mp4"
 %    video_file_sdr="F:/movie_trailers/revenant-tlr1_h1080p.mov"
 %    video_file_sdr="F:/movie_trailers/rogueone-tsr1_h1080p.mov"
@@ -299,10 +300,10 @@ video_file_sdr = "H:/trailers/madmax.mp4"
     %%%%%%%%%%%%  Color graded PARAMS %%%%%%%%%%%%%%%%
     % Derfault params
     tmo_params = object()
-    tmo_params.a:scalar= 1.27% 1%1.22 % Contrast
-    tmo_params.d:scalar = 0.98 % 0.995%1.77  % Shoulder
+    tmo_params.a:scalar= 1.04% 1%1.22 % Contrast
+    tmo_params.d:scalar = 1.36 % 0.995%1.77  % Shoulder
     tmo_params.midIn:scalar=(0.4)*(max_value);
-    tmo_params.midOut:scalar= 0.196%mid_out_dark %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    tmo_params.midOut:scalar= 0.489%mid_out_dark %0.063 %This value could be change dynamically .. TODO 0.18 HDR
     tmo_params.hdrMax:scalar=max_value %HDR Max value default (in image)
     tmo_params.peak_luminance:scalar=0.715    %0.8  %0.67 %Peak luminance in TMO
     updateBC(tmo_params);
@@ -374,14 +375,14 @@ video_file_sdr = "H:/trailers/madmax.mp4"
     cb_side_by_side = frm.add_checkbox("Compare SDR expanded", false)
     cb_sdr_vs_hdr = frm.add_checkbox("Compare HDR", false)
     cb_no_line = frm.add_checkbox("No line", true)
-    cb_record = frm.add_checkbox("Recording", false )
+    cb_record = frm.add_checkbox("Recording", true )
     
     frm.add_heading("Denoising parameters (LDR non-linear space)")
     cb_denoise = frm.add_checkbox("Denoising: ", true)
     slider_denoising_epsf = frm.add_slider("Denoising factor:",gf_params.epsf,0.0,20.0)
  
     frm.add_heading("POCS")
-    cb_pocs = frm.add_checkbox("POCS: ", true)
+    cb_pocs = frm.add_checkbox("POCS: ", false)
     slider_pocs_steps = frm.add_slider("S:",pocs_params.steps,1,512)
     
     frm.add_heading("Brightness enhancement mask computation")
@@ -495,7 +496,7 @@ video_file_sdr = "H:/trailers/madmax.mp4"
         endif
         
         %Read frames
-        frame = float(stream.rgb_data)/(255)
+        frame = (float(stream.rgb_data)/(2^16-1))*(2^8-1)
         
         %Denoising using fast joint bilateral filter (guided filter) 
         if(cb_denoise.value)
@@ -509,7 +510,7 @@ video_file_sdr = "H:/trailers/madmax.mp4"
         endif    
         
         %Linearize frame (normalized)
-        frame_denoised = linearize(frame_denoised) %Max value
+        frame_denoised = linearize(frame_denoised/255) %Max value
 
         %Get frame luminance
         frame_luma = getLuminanceImage(frame_denoised)
@@ -525,45 +526,45 @@ video_file_sdr = "H:/trailers/madmax.mp4"
         %Calc LUT for POCS and iTMO
         lut=color_grade(val_in,tmo_params)
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % Update mid out and maximum brightness
-        reach_midOut = 0;
-        reach_bright = 0;
-        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
-            reach_midOut = mid_out_dark;
-            reach_bright = max_bright_dark;
-            bright_status.text = "Dark"
-        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
-            reach_midOut = mid_out_normal;
-            reach_bright = max_bright_normal;
-            bright_status.text = "Normal"
-        else %Bright > 0.8
-            reach_midOut = mid_out_bright;
-            reach_bright = max_bright_bright;
-            bright_status.text = "Bright"
-        endif
-        
-        % Update reach luminance
-        if(reach_bright > tmo_params.peak_luminance) %Up luminance
-            tmo_params.peak_luminance = tmo_params.peak_luminance + l_high*abs(reach_bright-tmo_params.peak_luminance)
-            eb_params.boost_luminance = 1-tmo_params.peak_luminance
-            slider_max_lum.value = tmo_params.peak_luminance
-        elseif(reach_bright < tmo_params.peak_luminance)%Down luminance
-            tmo_params.peak_luminance = tmo_params.peak_luminance - l_low*abs(reach_bright-tmo_params.peak_luminance)
-            eb_params.boost_luminance = 1-tmo_params.peak_luminance
-            slider_max_lum.value = tmo_params.peak_luminance
-        endif
-        
-        %Update mid_out
-        if(reach_midOut > tmo_params.midOut) %Up luminance
-            tmo_params.midOut = tmo_params.midOut + l_high*abs(reach_midOut-tmo_params.midOut)
-            slider_midOut.value = tmo_params.midOut
-            updateBC(tmo_params)
-        elseif(reach_midOut < tmo_params.midOut)%Down luminance
-            tmo_params.midOut = tmo_params.midOut - l_low*abs(reach_midOut-tmo_params.midOut)
-            slider_midOut.value = tmo_params.midOut
-            updateBC(tmo_params)
-        endif
+%        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        % Update mid out and maximum brightness
+%        reach_midOut = 0;
+%        reach_bright = 0;
+%        if(slider_LogLumaNorm.value < th_dark_norm) %Dark
+%            reach_midOut = mid_out_dark;
+%            reach_bright = max_bright_dark;
+%            bright_status.text = "Dark"
+%        elseif(slider_LogLumaNorm.value < th_norm_bright) %Normal
+%            reach_midOut = mid_out_normal;
+%            reach_bright = max_bright_normal;
+%            bright_status.text = "Normal"
+%        else %Bright > 0.8
+%            reach_midOut = mid_out_bright;
+%            reach_bright = max_bright_bright;
+%            bright_status.text = "Bright"
+%        endif
+%        
+%        % Update reach luminance
+%        if(reach_bright > tmo_params.peak_luminance) %Up luminance
+%            tmo_params.peak_luminance = tmo_params.peak_luminance + l_high*abs(reach_bright-tmo_params.peak_luminance)
+%            eb_params.boost_luminance = 1-tmo_params.peak_luminance
+%            slider_max_lum.value = tmo_params.peak_luminance
+%        elseif(reach_bright < tmo_params.peak_luminance)%Down luminance
+%            tmo_params.peak_luminance = tmo_params.peak_luminance - l_low*abs(reach_bright-tmo_params.peak_luminance)
+%            eb_params.boost_luminance = 1-tmo_params.peak_luminance
+%            slider_max_lum.value = tmo_params.peak_luminance
+%        endif
+%        
+%        %Update mid_out
+%        if(reach_midOut > tmo_params.midOut) %Up luminance
+%            tmo_params.midOut = tmo_params.midOut + l_high*abs(reach_midOut-tmo_params.midOut)
+%            slider_midOut.value = tmo_params.midOut
+%            updateBC(tmo_params)
+%        elseif(reach_midOut < tmo_params.midOut)%Down luminance
+%            tmo_params.midOut = tmo_params.midOut - l_low*abs(reach_midOut-tmo_params.midOut)
+%            slider_midOut.value = tmo_params.midOut
+%            updateBC(tmo_params)
+%        endif
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
@@ -621,8 +622,8 @@ video_file_sdr = "H:/trailers/madmax.mp4"
 
 %        h = hdr_imshow(frame_show*max_value,[0,max_value])
        
-       %SIM2 LDR 600nits
-       h = hdr_imshow(frame_show*max_value,[0,max_value])
+       %SIM2 LDR 1000nits
+       %h = hdr_imshow(frame_show,[0,6])
 
        %LDR       
      %  im_ldr=delinearize(frame_show)*255
@@ -636,15 +637,20 @@ video_file_sdr = "H:/trailers/madmax.mp4"
 %             sim2_img = rgb2sim2(frame_show*max_value,1)
 %             png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 %             imwrite(png_path, sim2_img)
-             
-            pause(500)
-            y : cube[uint8]= h.rasterize()
-            png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
 
-            frame_pngsave[floor((1080-s_height)/2)..s_height+floor((1080-s_height)/2)-10,0..size(y,1)-1,:] = y[5..s_height-5,0..size(y,1)-1,:]
-            frame_pngsave[:,s_width-26..s_width-1,:]=0;
+pause(500)
+exr_path = sprintf("temp/out%08d.exr",png_frame_counter);     
+exrwrite(exr_path,float(frame_show));    
+    
 
-            imwrite(png_path, frame_pngsave[size(frame_pngsave,0)-1..-1..0,:,:]) %Flip image saved
+%%%%%%             
+%            pause(500)
+%            y : cube[uint8]= h.rasterize()
+%            png_path = sprintf(strcat(png_out_folder,"out%08d.png"),png_frame_counter); 
+%            frame_pngsave[floor((1080-s_height)/2)..s_height+floor((1080-s_height)/2)-10,0..size(y,1)-1,:] = y[5..s_height-5,0..size(y,1)-1,:]
+%            frame_pngsave[:,s_width-26..s_width-1,:]=0;
+%            imwrite(png_path, frame_pngsave[size(frame_pngsave,0)-1..-1..0,:,:]) %Flip image saved
+%%%%%%%%%%%        
         endif
 
         %toc()
