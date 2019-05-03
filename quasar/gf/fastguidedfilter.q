@@ -5,7 +5,7 @@ import "linalg.q"
 {!author name="Gonzalo Luzardo"}
 {!doc category="Image Processing/Filters"}
 
-function q:mat = fastguidedfilter(I : mat, p : mat, r : scalar, eps : scalar, s : scalar = 4)
+function q:mat = fastguidedfilter(I : mat'clamped, p : mat'clamped, r : scalar, eps : scalar, s : scalar = 4)
     %   GUIDEDFILTER   O(1) time implementation of guided filter.
     %
     %   - guidance image: I (should be a gray-scale/single channel image)
@@ -17,8 +17,8 @@ function q:mat = fastguidedfilter(I : mat, p : mat, r : scalar, eps : scalar, s 
     %    Coding translated from Matlab source available in http://research.microsoft.com/en-us/um/people/kahe/eccv10/
     %    Author: Gonzalo Luzardo
 
-    I_sub:mat = imresize(I:mat, 1/s, "nearest"); % NN is often enough
-    p_sub:mat = imresize(p:mat, 1/s, "nearest");
+    I_sub = imresize(I, 1/s, "nearest"); % NN is often enough
+    p_sub = imresize(p, 1/s, "nearest");
     r_sub = r / s; % make sure this is an integer
 
  
@@ -151,16 +151,18 @@ end
 
 function [] = main()
     I = imread("lena_big.tif") / 255
+    [h,w] = size(I,[0..1])
     p = I
-    r = 4;
+    r = 8;
     imshow(I,[0, 1])
+    
    
     eps=0.1^2
-    q1=uninit(size(I))
+    q1=zeros(size(I))
     tic()
-    q1[:,:,0] = fastguidedfilter(I[:,:,0], p[:,:,0], r, eps)
-    q1[:,:,1] = fastguidedfilter(I[:,:,1], p[:,:,1], r, eps)
-    q1[:,:,2] = fastguidedfilter(I[:,:,2], p[:,:,2], r, eps)
+    q1[0..h-1,0..w-1,0] = fastguidedfilter(I[0..h-1,0..w-1,0], p[0..h-1,0..w-1,0], r, eps)
+    q1[0..h-1,0..w-1,1] = fastguidedfilter(I[0..h-1,0..w-1,1], p[0..h-1,0..w-1,1], r, eps)
+    q1[0..h-1,0..w-1,2] = fastguidedfilter(I[0..h-1,0..w-1,2], p[0..h-1,0..w-1,2], r, eps)
     toc()
     imshow(q1,[0, 1]);
 
@@ -184,6 +186,3 @@ function [] = main()
 
 
 end
- 
- 
- 

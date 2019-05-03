@@ -211,7 +211,7 @@ function [] = main()
 %    video_file="F:/movie_trailers/The Angry Birds Movie (2016) DVDRip LAT-ZeiZ.mkv"
 %    video_file="F:/movie_trailers/thewheel-got-acard_h1080p.mov"
 
-video_file="H:/ldr_plus.mov"
+video_file="D:/ldr_plus.mov"
 
 %    jef = imread("C:\Users\ipi\Desktop\ishihara_10.jpg")/255
 %    h = hdr_imshow((jef.^(2.2))/10,[0,1])
@@ -256,12 +256,12 @@ video_file="H:/ldr_plus.mov"
     %%%%%%%%%%%%  Color graded PARAMS %%%%%%%%%%%%%%%%
     % Derfault params
     tmo_params = object()
-    tmo_params.a:scalar= 1.41 % Contrast
-    tmo_params.d:scalar = 2.25  % Shoulder
-    tmo_params.midIn:scalar=25000%(0.18^(1/2.2))*(2^16-1);
-    tmo_params.midOut:scalar=0.382; %This value could be change dynamically .. TODO
-    tmo_params.hdrMax:scalar=max_value %HDR Max value default (in image)
-    tmo_params.peak_luminance_ratio:scalar=general_params.peak_luminance_r %HDR Max value default (in image)
+    tmo_params.a= 1.41 % Contrast
+    tmo_params.d = 2.25  % Shoulder
+    tmo_params.midIn=25000%(0.18^(1/2.2))*(2^16-1);
+    tmo_params.midOut=0.382; %This value could be change dynamically .. TODO
+    tmo_params.hdrMax=max_value %HDR Max value default (in image)
+    tmo_params.peak_luminance_ratio=general_params.peak_luminance_r %HDR Max value default (in image)
     updateBC(tmo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%

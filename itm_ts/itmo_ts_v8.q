@@ -9,9 +9,9 @@ import "inttypes.q"
 import "system.q"
 import "colortransform.q"
 import "../../Quasar_EXR_library/src/EXR_lib/bin/Release/EXR_lib.dll"
-import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
-import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
-import "C:\Users\ipi\Documents\gluzardo\experiments\itmo_curve\adaptive_itmo.q"
+import "D:\gluzardo\eotf_pq\quasar\transfer_functions.q"
+import "D:\gluzardo\quasar_sim2\sim2.q"
+import "D:\gluzardo\experiments\itmo_curve\adaptive_itmo.q"
 
 
 %Linearization and delinearization assumes that the LDR input is encoded with the sRGB transfer function
@@ -196,7 +196,7 @@ function [] = main()
     %Video to process
     input_type=1  %0-EXR images  1-video 
     %video_file_sdr="H:/HDR_KORTFILM_PQ1K_2020_.mov"
-    video_file_sdr="H:/ldr_cutoff.mov"
+    video_file_sdr="D:/ldr_cutoff.mov"
     % For image input
     image_frames = object()
     image_frames.start_frame = 0
@@ -254,13 +254,13 @@ function [] = main()
     %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
     % Default params
     eo_params = object()
-    eo_params.a:scalar= 2.28% Contrast
-    eo_params.d:scalar = 0.96 % Shoulder
-    eo_params.midIn:scalar=0.5
-    eo_params.midOut:scalar= 0.33 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
-    eo_params.hdrMax:scalar=1.0
-    eo_params.s:scalar=1.3
-    eo_params.peak_luminance:scalar=peak_luminance_sim2
+    eo_params.a= 2.28% Contrast
+    eo_params.d = 0.96 % Shoulder
+    eo_params.midIn=0.5
+    eo_params.midOut= 0.33 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    eo_params.hdrMax=1.0
+    eo_params.s=1.3
+    eo_params.peak_luminance=peak_luminance_sim2
     updateBC(eo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%

@@ -8,9 +8,9 @@ import "fastguidedfilter.q"
 import "inttypes.q"
 import "system.q"
 import "colortransform.q"
-import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
-import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
-import "exr_lib.dll"
+import "D:\gluzardo\eotf_pq\quasar\transfer_functions.q"
+import "D:\gluzardo\quasar_sim2\sim2.q"
+%import "exr_lib.dll"
 
 %Linearize
 function y = linearize(x)
@@ -106,13 +106,16 @@ end
 
 %Kernel to Apply tmo operator to Separation of Max an RGB ratio in parllel
 function [y:vec] = getLut(x:vec,params:object)
-    function []= __kernel__ getLut_kernel(x:vec'unchecked, y:vec'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,pos:ivec2)
-        input=x[pos[0],pos[1]];
-        y[pos[0],pos[1]]= expandVal(input,a,b,c,d,p);
+    function []= __kernel__ getLut_kernel(x:vec'unchecked, y:vec'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,pos:int)
+        input=x[pos];
+        y[pos]= expandVal(input,a,b,c,d,p);
     end
-    y=uninit(size(x)) 
+    y:vec=uninit(size(x)) 
     
     parallel_do(size(x),x,y,params.a,params.b,params.c,params.d,params.peak_luminance,getLut_kernel)
+ 
+    
+
 end
 
 %Unmake
@@ -255,7 +258,7 @@ end
 function [] = main()
     %Video to process
     input_type = 0
-    video_file_sdr="H:\demo_light_festival\tempo\life.avi"
+    video_file_sdr="D:\ldr_plus.mov"
     
     start_frame=1081191
     current_frame=1081191
@@ -307,12 +310,12 @@ function [] = main()
     %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
     % Default params
     eo_params = object()
-    eo_params.a:scalar= 1.45 % Contrast
-    eo_params.d:scalar = 4.7 % Shoulder
-    eo_params.midIn:scalar=0.5
-    eo_params.midOut:scalar= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
-    eo_params.hdrMax:scalar=1.0
-    eo_params.peak_luminance:scalar=0.75%max_bright_normal    %0.8  %0.67 %Peak luminance in TMO
+    eo_params.a= 1.45 % Contrast
+    eo_params.d = 4.7 % Shoulder
+    eo_params.midIn=0.5
+    eo_params.midOut= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    eo_params.hdrMax=1.0
+    eo_params.peak_luminance=0.75%max_bright_normal    %0.8  %0.67 %Peak luminance in TMO
     updateBC(eo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%
@@ -531,7 +534,7 @@ function [] = main()
             %frame = frame.^2.2 
         else
             img_file = sprintf(video_file_sdr,current_frame)
-            frame = exrread(img_file).data;     
+            %frame = exrread(img_file).data;     
         endif
         
         %Denoising using fast joint bilateral filter (guided filter) 

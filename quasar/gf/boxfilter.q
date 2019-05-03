@@ -3,7 +3,8 @@ import "system.q"
 {!author name="Gonzalo Luzardo"}
 {!doc category="Image Processing/Filters"}
 
-function imDst:mat = boxfilter(imSrc:mat, r:scalar)
+
+function imDst:mat = boxfilter(imSrc:mat'clamped, r:scalar)
     %   BOXFILTER   O(1) time box filtering using cumulative sum
     %
     %   - Definition imDst(x, y)=sum(sum(imSrc(x-r:x+r,y-r:y+r)));
@@ -14,25 +15,27 @@ function imDst:mat = boxfilter(imSrc:mat, r:scalar)
     %    Coding translated from Matlab source available in http://research.microsoft.com/en-us/um/people/kahe/eccv10/
     %    Author: Gonzalo Luzardo
 
-    [hei,wid] = size(imSrc);
+    [hei,wid] = size(imSrc,0..1);
     imDst = zeros(hei,wid);
             
     %cumulative sum over Y axis 
-    imCum:mat = transpose(cumsum(transpose(imSrc)));
+    %imCum:mat = transpose(cumsum(transpose(imSrc)));
+    imCum = cumsum(imSrc,0)
+    %imCum = cumVert(imSrc)
         
     %difference over Y axis
-    imDst[1-1..r+1-1,:] = imCum[1+r-1..2*r+1-1,:];
-    imDst[r+2-1..hei-r-1,:] = imCum[2*r+2-1..hei-1,:] - imCum[1-1..hei-2*r-1-1,:];
-    imDst[hei-r+1-1..hei-1,:] = repmat(imCum[hei-1,:], [r, 1]) - imCum[hei-2*r-1..hei-r-1-1,:];
+    imDst[1-1..r+1-1,0..wid-1] = imCum[1+r-1..2*r+1-1,0..wid-1];
+    imDst[r+2-1..hei-r-1,0..wid-1] = imCum[2*r+2-1..hei-1,0..wid-1] - imCum[1-1..hei-2*r-1-1,0..wid-1];
+    imDst[hei-r+1-1..hei-1,0..wid-1] = repmat(imCum[hei-1,0..wid-1], [r, 1]) - imCum[hei-2*r-1..hei-r-1-1,0..wid-1];
         
-    %Acumulative sum over X axis
-    imCum = cumsum(imDst);
+    %cumulative sum over X axis
+    imCum = cumsum(imDst,1);
+    %imCum = cumHor(imSrc)
     
     %difference over Y axis
-    imDst[:,1-1..r+1-1] = imCum[:, 1+r-1..2*r+1-1];
-    imDst[:,r+2-1..wid-r-1] = imCum[:,2*r+2-1..wid-1]-imCum[:,1-1..wid-2*r-1-1];
-    imDst[:,wid-r+1-1..wid-1] = repmat(imCum[:, wid-1], [1, r]) - imCum[:, wid-2*r-1..wid-r-1-1];  
+    imDst[0..hei-1,1-1..r+1-1] = imCum[0..hei-1, 1+r-1..2*r+1-1];
+    imDst[0..hei-1,r+2-1..wid-r-1] = imCum[0..hei-1,2*r+2-1..wid-1]-imCum[:,1-1..wid-2*r-1-1];
+    imDst[0..hei-1,wid-r+1-1..wid-1] = repmat(imCum[0..hei-1, wid-1], [1, r]) - imCum[0..hei-1, wid-2*r-1..wid-r-1-1];  
 end
-
 
 

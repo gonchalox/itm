@@ -8,7 +8,7 @@ import "fastguidedfilter.q"
 import "inttypes.q"
 import "system.q"
 import "colortransform.q"
-import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
+import "D:\gluzardo\eotf_pq\quasar\transfer_functions.q"
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Toe, shoulder Tonemapper                                             %
@@ -233,7 +233,7 @@ function [] = main()
 %    video_file_sdr="F:/movie_trailers/beauty-and-the-beast-trailer-2_h1080p.mov"
     
 %    video_file_sdr="F:/movie_trailers/The Angry Birds Movie (2016) DVDRip LAT-ZeiZ.mkv"
-    video_file_sdr="H:/ldr_plus.mov"
+    video_file_sdr="D:/ldr_plus.mov"
 
 
 %    jef = imread("C:\Users\ipi\Desktop\ishihara_10.jpg")/255
@@ -269,12 +269,12 @@ function [] = main()
     %%%%%%%%%%%%  Color graded PARAMS %%%%%%%%%%%%%%%%
     % Derfault params
     tmo_params = object()
-    tmo_params.a:scalar= 1.22% 1%1.22 % Contrast
-    tmo_params.d:scalar = 2.82 % 0.995%1.77  % Shoulder
-    tmo_params.midIn:scalar=(0.5)*(2^16-1);
-    tmo_params.midOut:scalar= 0.23 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
-    tmo_params.hdrMax:scalar=max_value %HDR Max value default (in image)
-    tmo_params.peak_luminance:scalar=0.67 %0.8  %0.67 %Peak luminance in TMO
+    tmo_params.a= 1.22% 1%1.22 % Contrast
+    tmo_params.d = 2.82 % 0.995%1.77  % Shoulder
+    tmo_params.midIn=(0.5)*(2^16-1);
+    tmo_params.midOut= 0.23 %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    tmo_params.hdrMax=max_value %HDR Max value default (in image)
+    tmo_params.peak_luminance=0.67 %0.8  %0.67 %Peak luminance in TMO
     updateBC(tmo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%

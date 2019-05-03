@@ -3,13 +3,13 @@ import "Quasar.UI.dll"
 import "Quasar.Runtime.dll"
 import "Sim2HDR.dll"
 import "Quasar.UI.dll"
-import "immorphology.q"
+%import "immorphology.q"
 import "fastguidedfilter.q"
 import "inttypes.q"
 import "system.q"
 import "colortransform.q"
-import "C:\Users\ipi\Documents\gluzardo\eotf_pq\quasar\transfer_functions.q"
-import "C:\Users\ipi\Documents\gluzardo\quasar_sim2\sim2.q"
+import "D:\gluzardo\eotf_pq\quasar\transfer_functions.q"
+import "D:\gluzardo\quasar_sim2\sim2.q"
 
 %Linearize
 function y = linearize(x)
@@ -48,9 +48,9 @@ end
 % {b,c} anchors curve                                                  %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %Apply lut
-function [y:cube] = EO_LUT(x:cube'unchecked,low:cube'unchecked,high:cube'unchecked,lut:vec'unchecked)
+function [y:cube] = EO_LUT(x:cube'unchecked,low:cube,high:cube'unchecked,lut:vec'unchecked)
     entries = max(size(lut))
-    function [] = __kernel__ EOTF_LUT_kern(x:cube'unchecked,y:cube'unchecked,low:cube'unchecked,high:cube'unchecked,lut:vec'clamped,resol:int,pos:ivec3)
+    function [] = __kernel__ EOTF_LUT_kern(x:cube,y:cube,low:cube'unchecked,high:cube'unchecked,lut:vec'clamped,resol:int,pos:ivec3)
         index = floor(x[pos[0],pos[1],pos[2]]*(resol-1))
         y[pos[0],pos[1],pos[2]] = lut[index]
         low[pos[0],pos[1],pos[2]] = lut[index]-3*(lut[index]-lut[index-1])/2
@@ -81,9 +81,9 @@ end
 %   
 
 %Apply lut take care of color change
-function [y:cube] = EO_LUT_CF(x:cube'unchecked,low:cube'unchecked,high:cube'unchecked,params:object,lut:vec'unchecked)
+function [y:cube] = EO_LUT_CF(x:cube,low:cube,high:cube,params:object,lut:vec)
     entries = max(size(lut))
-    function [] = __kernel__ EO_LUT_CF_kern(x:cube'unchecked,y:cube'unchecked,low:cube'unchecked,high:cube'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,lut:vec'clamped,resol:int,pos:ivec2)
+    function [] = __kernel__ EO_LUT_CF_kern(x:cube,y:cube,low:cube,high:cube,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,lut:vec'clamped,resol:int,pos:ivec2)
         input = [x[pos[0],pos[1],0],x[pos[0],pos[1],1],x[pos[0],pos[1],2]]
         output=expandPixel(input,a,b,c,d,p)
         y[pos[0],pos[1],0]=output[0]
@@ -98,16 +98,16 @@ function [y:cube] = EO_LUT_CF(x:cube'unchecked,low:cube'unchecked,high:cube'unch
     parallel_do(size(x,0..1),x,y,low,high,params.a,params.b,params.c,params.d,params.peak_luminance,lut,entries,EO_LUT_CF_kern)
 end
 
-function [out] = __device__ expandVal(in:scalar'unchecked,a,b,c,d,p)
+function [out] = __device__ expandVal(in:scalar,a,b,c,d,p)
     out=(in.^a)./(((in.^a).^d).*b+c);
     out=p*clamp(out,1.0) %Clamp values between 0 and peak luminance
 end
 
 %Kernel to Apply tmo operator to Separation of Max an RGB ratio in parllel
 function [y:vec] = getLut(x:vec,params:object)
-    function []= __kernel__ getLut_kernel(x:vec'unchecked, y:vec'unchecked,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,pos:ivec2)
-        input=x[pos[0],pos[1]];
-        y[pos[0],pos[1]]= expandVal(input,a,b,c,d,p);
+    function []= __kernel__ getLut_kernel(x:vec, y:vec,a:scalar,b:scalar,c:scalar,d:scalar,p:scalar,pos:int)
+        input=x[pos];
+        y[pos]= expandVal(input,a,b,c,d,p);
     end
     y=uninit(size(x)) 
     %Linearize the image
@@ -254,7 +254,7 @@ end
 
 function [] = main()
     %Video to process
-    video_file_sdr="H:/trailers/madmax.mp4"
+    video_file_sdr="D:/ldr_plus.mov"
     right_text_img = imread("Media/text_right.png")
     left_text_img = imread("Media/text_left.png")
     mask_text_img = imread("Media/text_mask.png")
@@ -300,12 +300,12 @@ function [] = main()
     %%%%%%%%%%%%  Expand operator curve %%%%%%%%%%%%%%%%
     % Default params
     eo_params = object()
-    eo_params.a:scalar= 2.78 % Contrast
-    eo_params.d:scalar = 0.7 % Shoulder
-    eo_params.midIn:scalar=0.5
-    eo_params.midOut:scalar= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
-    eo_params.hdrMax:scalar=1.0
-    eo_params.peak_luminance:scalar=0.75%max_bright_normal    %0.8  %0.67 %Peak luminance in TMO
+    eo_params.a= 2.78 % Contrast
+    eo_params.d = 0.7 % Shoulder
+    eo_params.midIn=0.5
+    eo_params.midOut= mid_out_normal %0.063 %This value could be change dynamically .. TODO 0.18 HDR
+    eo_params.hdrMax=1.0
+    eo_params.peak_luminance=0.75%max_bright_normal    %0.8  %0.67 %Peak luminance in TMO
     updateBC(eo_params);
     
     %%%%%%%%%%%% POCS  %%%%%%%%%%%%%%%
@@ -391,7 +391,7 @@ function [] = main()
     cb_enhance_brightness_gf = frm.add_checkbox("Edge stop and smooth: ", true)
     cb_show_brightness_mask = frm.add_checkbox("Show Mask (left) ", false)
     frm.add_heading("HDR Brightness enhancement ")
-    cb_enhance_brightness_add = frm.add_checkbox("Enhance Brigthness by addition: ", true)
+    cb_enhance_brightness_add = frm.add_checkbox("Enhance Brigthness by addition: ", false)
     cb_enhance_brightness_mult = frm.add_checkbox("Enhance Brigthness by multiplying  ", false)
     
     frm.add_heading("Color grading params")
@@ -597,7 +597,7 @@ function [] = main()
         if(cb_no_line.value)
             frame_show=frame_dequant;
             %Add text
-            frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
+            %frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = right_text_img[:,:,0..2]/1024;
         else
             if(cb_side_by_side.value)
                 frame_show[s_height/4..s_height/4+s_height/2-1,0..s_width/2-1,:] = imresize(linearize(frame/255),0.5,"nearest")/sdr_factor;
@@ -613,7 +613,7 @@ function [] = main()
                     frame_show[:,0..xloc,:]=linearize(frame[:,0..xloc,:]/255)
                     %frame_show[:,0..xloc,:]=frame_expanded[:,0..xloc,:]
                     %Add text
-                    frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = left_text_img[:,:,0..2]/1024;
+                    %frame_show[x_pos_tit..x_pos_tit+43,20..20+277,:] = left_text_img[:,:,0..2]/1024;
                 endif
                 
                 %Show processed
